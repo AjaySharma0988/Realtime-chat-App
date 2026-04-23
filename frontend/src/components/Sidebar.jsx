@@ -1,87 +1,129 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useChatStore } from "../store/useChatStore";
 import { useAuthStore } from "../store/useAuthStore";
 import SidebarSkeleton from "./skeletons/SidebarSkeleton";
-import { Users } from "lucide-react";
+import {
+  MessageSquare, Search, MoreVertical, LogOut,
+  Settings, User, Users, Edit, Smartphone,
+  Star, Bell, CheckSquare, X, ChevronDown,
+} from "lucide-react";
+import ChatItem from "./ChatItem";
+import SidebarBase from "./SidebarBase";
+import ChatStyleHeader from "./sidebars/ChatStyleHeader";
+import ChatStyleList from "./sidebars/ChatStyleList";
+
+const FILTERS = ["All", "Unread", "Favorites"];
 
 const Sidebar = () => {
-  const { getUsers, users, selectedUser, setSelectedUser, isUsersLoading } = useChatStore();
+  const { getUsers, users, selectedUser, setSelectedUser, isUsersLoading, messages } = useChatStore();
+  const { onlineUsers, logout, authUser } = useAuthStore();
 
-  const { onlineUsers } = useAuthStore();
-  const [showOnlineOnly, setShowOnlineOnly] = useState(false);
+  const [filter, setFilter] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef(null);
+  const navigate = useNavigate();
 
+  useEffect(() => { getUsers(); }, [getUsers]);
+
+  // Close menu on outside click
   useEffect(() => {
-    getUsers();
-  }, [getUsers]);
+    const h = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setShowMenu(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
 
-  const filteredUsers = showOnlineOnly
-    ? users.filter((user) => onlineUsers.includes(user._id))
-    : users;
+  const filteredUsers = users
+    .filter((u) => {
+      if (searchQuery.trim()) return u.fullName.toLowerCase().includes(searchQuery.toLowerCase());
+      return true;
+    })
+    .filter((u) => {
+      if (filter === "Unread") return false; // placeholder — needs unread count API
+      return true;
+    });
+
+  const menuItems = [
+    { icon: Edit, label: "New group", action: null },
+    { icon: Star, label: "Starred messages", action: null },
+    { icon: CheckSquare, label: "Select chats", action: null },
+    { icon: Bell, label: "Mark all as read", action: null },
+    { icon: Smartphone, label: "Linked devices", action: () => navigate("/linked-devices") },
+    null,
+    { icon: Settings, label: "Settings", action: () => navigate("/settings") },
+    { icon: User, label: "Profile", action: () => navigate("/profile") },
+    { icon: LogOut, label: "Log out", action: logout, danger: true },
+  ];
 
   if (isUsersLoading) return <SidebarSkeleton />;
 
   return (
-    <aside className="h-full w-20 lg:w-72 border-r border-base-300 flex flex-col transition-all duration-200">
-      <div className="border-b border-base-300 w-full p-5">
-        <div className="flex items-center gap-2">
-          <Users className="size-6" />
-          <span className="font-medium hidden lg:block">Contacts</span>
-        </div>
-        {/* TODO: Online filter toggle */}
-        <div className="mt-3 hidden lg:flex items-center gap-2">
-          <label className="cursor-pointer flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={showOnlineOnly}
-              onChange={(e) => setShowOnlineOnly(e.target.checked)}
-              className="checkbox checkbox-sm"
-            />
-            <span className="text-sm">Show online only</span>
-          </label>
-          <span className="text-xs text-zinc-500">({onlineUsers.length - 1} online)</span>
-        </div>
-      </div>
-
-      <div className="overflow-y-auto w-full py-3">
-        {filteredUsers.map((user) => (
+    <SidebarBase>
+      <ChatStyleHeader 
+        title="Chats"
+        menuRef={menuRef}
+        showMenu={showMenu}
+        setShowMenu={setShowMenu}
+        menuItems={menuItems}
+        actions={
           <button
-            key={user._id}
-            onClick={() => setSelectedUser(user)}
-            className={`
-              w-full p-3 flex items-center gap-3
-              hover:bg-base-300 transition-colors
-              ${selectedUser?._id === user._id ? "bg-base-300 ring-1 ring-base-300" : ""}
-            `}
+            className="p-2 rounded-full hover:bg-base-300 transition-colors hidden lg:flex"
+            title="New chat"
           >
-            <div className="relative mx-auto lg:mx-0">
-              <img
-                src={user.profilePic || "/avatar.png"}
-                alt={user.name}
-                className="size-12 object-cover rounded-full"
-              />
-              {onlineUsers.includes(user._id) && (
-                <span
-                  className="absolute bottom-0 right-0 size-3 bg-green-500 
-                  rounded-full ring-2 ring-zinc-900"
-                />
-              )}
-            </div>
-
-            {/* User info - only visible on larger screens */}
-            <div className="hidden lg:block text-left min-w-0">
-              <div className="font-medium truncate">{user.fullName}</div>
-              <div className="text-sm text-zinc-400">
-                {onlineUsers.includes(user._id) ? "Online" : "Offline"}
-              </div>
-            </div>
+            <Edit className="size-4 text-base-content/60" />
           </button>
-        ))}
+        }
+      />
 
-        {filteredUsers.length === 0 && (
-          <div className="text-center text-zinc-500 py-4">No online users</div>
-        )}
-      </div>
-    </aside>
+      <ChatStyleList 
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        placeholder="Search or start a new chat"
+      >
+        {/* ── Filter Pills ─────────────────────────────────────────────────── */}
+        <div className="hidden lg:flex items-center gap-2 px-3 pb-2 flex-shrink-0 overflow-x-auto scrollbar-none">
+          {FILTERS.map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`flex-shrink-0 px-4 py-1 rounded-full text-xs font-semibold transition-all border
+                ${filter === f
+                  ? "bg-primary text-primary-content border-primary"
+                  : "border-base-300 text-base-content/60 hover:bg-base-200"
+                }`}
+            >
+              {f}
+            </button>
+          ))}
+          <button className="flex-shrink-0 size-6 rounded-full border border-base-300 flex items-center justify-center hover:bg-base-200 transition-colors">
+            <ChevronDown className="size-3 text-base-content/50" />
+          </button>
+        </div>
+
+        {/* ── Chat / Contact List ──────────────────────────────────────────── */}
+        <div className="flex-1">
+          {filteredUsers.length === 0 && (
+            <div className="py-12 flex flex-col items-center gap-3 text-base-content/40">
+              <Users className="size-10 opacity-40" />
+              <p className="text-sm">
+                {searchQuery ? `No results for "${searchQuery}"` : "No contacts found"}
+              </p>
+            </div>
+          )}
+
+          {filteredUsers.map((user) => (
+            <ChatItem 
+              key={user._id} 
+              user={user} 
+              isSelected={selectedUser?._id === user._id}
+            />
+          ))}
+        </div>
+      </ChatStyleList>
+    </SidebarBase>
   );
 };
+
 export default Sidebar;
+

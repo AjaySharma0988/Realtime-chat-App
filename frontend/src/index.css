@@ -1,3 +1,231 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   LAYOUT — full-height, no scroll, no margin bleed
+───────────────────────────────────────────────────────────────────────────── */
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SCROLLBAR — thin & unobtrusive
+───────────────────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar         { width: 4px; height: 4px; }
+::-webkit-scrollbar-track   { background: transparent; }
+::-webkit-scrollbar-thumb   { background-color: oklch(var(--bc) / 0.2); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background-color: oklch(var(--bc) / 0.35); }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   WHATSAPP CHAT BACKGROUND
+   Used by NoChatSelected and the message list background
+───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --wa-chat-bg: #111B21;
+  --sidebar-width: 320px;
+}
+
+[data-theme="light"],
+[data-theme="cupcake"],
+[data-theme="bumblebee"],
+[data-theme="emerald"],
+[data-theme="corporate"],
+[data-theme="retro"],
+[data-theme="valentine"],
+[data-theme="garden"],
+[data-theme="aqua"],
+[data-theme="lofi"],
+[data-theme="pastel"],
+[data-theme="fantasy"],
+[data-theme="wireframe"],
+[data-theme="cmyk"],
+[data-theme="autumn"],
+[data-theme="lemonade"],
+[data-theme="winter"],
+[data-theme="nord"] {
+  --wa-chat-bg: #EFEAE4;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   THEME-AWARE CHAT BUBBLE COLORS
+   Using CSS custom properties so every DaisyUI theme gets its own bubble look.
+───────────────────────────────────────────────────────────────────────────── */
+
+/* ── Default (works for any unrecognised dark theme) ── */
+:root {
+  --bubble-sent-bg:      #005C4B;
+  --bubble-sent-text:    #E9EDEF;
+  --bubble-received-bg:  #1F2C34;
+  --bubble-received-text:#E9EDEF;
+  --bubble-meta-color:   #8696A0;
+}
+
+/* ── WhatsApp (custom DaisyUI theme) ── */
+[data-theme="whatsapp"] {
+  --bubble-sent-bg:      #005C4B;
+  --bubble-sent-text:    #E9EDEF;
+  --bubble-received-bg:  #1F2C34;
+  --bubble-received-text:#E9EDEF;
+  --bubble-meta-color:   #8696A0;
+}
+
+/* ── Dark, night, synthwave, dracula, halloween, black, luxury, coffee, dim ── */
+[data-theme="dark"],
+[data-theme="night"],
+[data-theme="synthwave"],
+[data-theme="dracula"],
+[data-theme="halloween"],
+[data-theme="black"],
+[data-theme="luxury"],
+[data-theme="coffee"],
+[data-theme="dim"],
+[data-theme="sunset"],
+[data-theme="business"],
+[data-theme="forest"],
+[data-theme="cyberpunk"] {
+  --bubble-sent-bg:      #005C4B;
+  --bubble-sent-text:    #E9EDEF;
+  --bubble-received-bg:  #1F2C34;
+  --bubble-received-text:#E9EDEF;
+  --bubble-meta-color:   #8696A0;
+}
+
+/* ── Light themes — WhatsApp-style light green sent, white received ── */
+[data-theme="light"],
+[data-theme="cupcake"],
+[data-theme="bumblebee"],
+[data-theme="emerald"],
+[data-theme="corporate"],
+[data-theme="retro"],
+[data-theme="valentine"],
+[data-theme="garden"],
+[data-theme="aqua"],
+[data-theme="lofi"],
+[data-theme="pastel"],
+[data-theme="fantasy"],
+[data-theme="wireframe"],
+[data-theme="cmyk"],
+[data-theme="autumn"],
+[data-theme="lemonade"],
+[data-theme="winter"],
+[data-theme="nord"] {
+  --bubble-sent-bg:      #d9fdd3;
+  --bubble-sent-text:    #111B21;
+  --bubble-received-bg:  #ffffff;
+  --bubble-received-text:#111B21;
+  --bubble-meta-color:   #667781;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   SHIMMER TEXT — Apple-style smooth gradient animation
+───────────────────────────────────────────────────────────────────────────── */
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.15) 0%,
+    rgba(255, 255, 255, 0.6) 50%,
+    rgba(255, 255, 255, 0.15) 100%
+  );
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmerMove 3s linear infinite;
+  will-change: background-position;
+  display: inline-block;
+}
+
+@keyframes shimmerMove {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   MICRO-ANIMATIONS (REFINED)
+───────────────────────────────────────────────────────────────────────────── */
+
+/* Message bubble / dropdown pop-in — removed scale for Apple-style slide */
+@keyframes wa-pop-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+
+/* Contact info panel — slides in from right */
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+/* Select action bar — slides up from bottom */
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* Left nav panel — slides in from left on mount */
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+
+/* Dot bounce for call modal — kept as it is a translate, not a stretch */
+@keyframes dotBounce {
+  0%, 80%, 100% { transform: translateY(0);    opacity: 0.4; }
+  40%           { transform: translateY(-6px); opacity: 1;   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   NATIVE AUDIO PLAYER — reset browser default styling
+   Keeps it compact and inline inside bubbles
+───────────────────────────────────────────────────────────────────────────── */
+audio {
+  height: 32px;
+  border-radius: 8px;
+}
+
+/* ── Message highlight flash (reply scroll target) ───────────────────────── */
+.msg-highlight {
+  background-color: rgba(234, 179, 8, 0.22) !important; /* yellow-500/22 */
+  transition: background-color 0.3s ease;
+}
+
+/* ── Reply quote inside bubble ───────────────────────────────────────────── */
+.reply-quote {
+  border-left: 4px solid oklch(var(--p));        /* DaisyUI primary */
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 0 6px 6px 0;
+  padding: 4px 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.reply-quote:hover {
+  background: rgba(0, 0, 0, 0.22);
+}
+
+/* ── LeftNavPanel — hide tooltip on non-hover without flicker ────────────── */
+/* ── Sidebar Base Styling ────────────────────────────────────────────────── */
+.sidebar-base {
+  width: var(--sidebar-width);
+  min-width: 200px;
+  max-width: 500px;
+  background: #0B141A;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  border-right: 1px solid oklch(var(--bc) / 0.1);
+}
+
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 8s linear infinite;
+}

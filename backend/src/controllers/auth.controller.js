@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import cloudinary from "../lib/cloudinary.js";
 
 export const signup = async (req, res) => {
-  const { fullName, email, password } = req.body;
+  const { fullName, email, password, profilePic } = req.body;
   try {
     if (!fullName || !email || !password) {
       return res.status(400).json({ message: "All fields are required" });
@@ -21,10 +21,17 @@ export const signup = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
+    let imageUrl = "";
+    if (profilePic) {
+      const uploadResponse = await cloudinary.uploader.upload(profilePic);
+      imageUrl = uploadResponse.secure_url;
+    }
+
     const newUser = new User({
       fullName,
       email,
       password: hashedPassword,
+      profilePic: imageUrl,
     });
 
     if (newUser) {
@@ -47,6 +54,8 @@ export const signup = async (req, res) => {
   }
 };
 
+import Message from "../models/message.model.js";
+
 export const login = async (req, res) => {
   const { email, password } = req.body;
   try {
@@ -61,6 +70,18 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
+    if (user.deletionScheduledAt) {
+      const daysDiff = (Date.now() - new Date(user.deletionScheduledAt).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysDiff > 15) {
+        // Permanently delete user and all their data
+        await Message.deleteMany({
+          $or: [{ senderId: user._id }, { receiverId: user._id }],
+        });
+        await User.findByIdAndDelete(user._id);
+        return res.status(404).json({ message: "Account and all data have been permanently deleted" });
+      }
+    }
+
     generateToken(user._id, res);
 
     res.status(200).json({
@@ -68,6 +89,7 @@ export const login = async (req, res) => {
       fullName: user.fullName,
       email: user.email,
       profilePic: user.profilePic,
+      deletionScheduledAt: user.deletionScheduledAt,
     });
   } catch (error) {
     console.log("Error in login controller", error.message);
@@ -110,9 +132,39 @@ export const updateProfile = async (req, res) => {
 
 export const checkAuth = (req, res) => {
   try {
+    if (req.user.deletionScheduledAt) {
+      const daysDiff = (Date.now() - new Date(req.user.deletionScheduledAt).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysDiff > 15) {
+         // Should have been caught by login or cron, but safety check
+         return res.status(401).json({ message: "Account deleted" });
+      }
+    }
     res.status(200).json(req.user);
   } catch (error) {
     console.log("Error in checkAuth controller", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    await User.findByIdAndUpdate(userId, { deletionScheduledAt: new Date() });
+    res.cookie("jwt", "", { maxAge: 0 });
+    res.status(200).json({ message: "Account scheduled for deletion. You have 15 days to restore it." });
+  } catch (error) {
+    console.log("Error in deleteAccount controller", error.message);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const restoreAccount = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    await User.findByIdAndUpdate(userId, { deletionScheduledAt: null });
+    res.status(200).json({ message: "Account restored successfully" });
+  } catch (error) {
+    console.log("Error in restoreAccount controller", error.message);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };

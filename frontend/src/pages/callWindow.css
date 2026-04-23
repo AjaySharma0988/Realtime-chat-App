@@ -1,0 +1,1239 @@
+/* callWindow.css - UI Enhancement */
+
+/* Base resets */
+.wa-call-window {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Video Layouts */
+.video-main {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-pip {
+  position: absolute;
+  top: 80px;
+  right: 24px;
+  width: 238px;
+  height: 134px;
+  aspect-ratio: auto;
+  border-radius: 16px;
+  overflow: hidden;
+  z-index: 30;
+  cursor: pointer;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--fallback-n,oklch(var(--n)));
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.video-pip:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--fallback-b3,oklch(var(--b3)));
+}
+
+@media (max-width: 640px) {
+  .video-pip {
+    width: 140px;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    top: 70px;
+    right: 16px;
+  }
+}
+
+/* Status Indicators */
+.status-icon-pip {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  gap: 6px;
+  opacity: 0.8;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 4px 8px;
+  border-radius: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.status-icon-main {
+  position: absolute;
+  bottom: 38px;
+  left: 45px;
+  display: flex;
+  gap: 8px;
+  opacity: 0.9;
+  z-index: 60;
+  /* background: rgba(0, 0, 0, 0.5); */
+  padding: 6px 12px;
+  border-radius: 20px;
+  backdrop-filter: blur(8px);
+  /* border: 1px solid rgba(255, 255, 255, 0.1); */
+}
+
+/* Control Buttons */
+.wa-control-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+.wa-control-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.wa-control-btn.off {
+  background: var(--fallback-b3,oklch(var(--b3)));
+  color: oklch(var(--bc) / 0.6);
+}
+
+.wa-center-btn {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.wa-center-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.wa-end-btn {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #EF4444;
+  color: white;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.wa-end-btn:hover {
+  background: #DC2626;
+}
+
+/* HAND RAISE */
+.overlay-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.hand-icon {
+  position: absolute;
+  bottom: 40px;
+  left: 10px;
+  font-size: 20px;
+  opacity: 0;
+  transition: all 0.3s ease;
+  z-index: 60;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.5));
+}
+
+.hand-icon.active {
+  opacity: 0.7;
+}
+
+/* EMOJI FLOAT */
+.emoji-float {
+  position: absolute;
+  bottom: 30px;
+  left: calc(20px + var(--x-offset, 0px));
+  font-size: 24px;
+  opacity: 1;
+  animation: floatUp 2s ease-out forwards;
+  z-index: 999;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.5));
+}
+
+@keyframes floatUp {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  50% {
+    transform: translateY(-120px);
+    opacity: 0.7;
+  }
+
+  100% {
+    transform: translateY(-200px);
+    opacity: 0;
+  }
+}
+
+/* EMOJI PICKER */
+.emoji-picker-panel {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(17, 27, 33, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 12px;
+  border-radius: 20px;
+  display: flex;
+  gap: 12px;
+  z-index: 100;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.emoji-picker-panel.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.emoji-btn {
+  font-size: 1.5rem;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.emoji-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+}
+
+
+/* WATCH PARTY RESPONSIVE FLUID MORPHS */
+.watch-party-active .video-main,
+.watch-party-active .video-pip,
+.watch-party-active .group-grid-cell {
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  width: 100% !important;
+  height: auto !important;
+  aspect-ratio: 16/9;
+  border-radius: 12px !important;
+  margin-bottom: 8px !important;
+  box-shadow: none !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  overflow: hidden;
+}
+
+.watch-party-active .status-icon-pip,
+.watch-party-active .status-icon-main {
+  position: absolute !important;
+  bottom: 8px !important;
+  left: 8px !important;
+  transform: scale(0.85);
+  transform-origin: left bottom;
+}
+
+.watch-party-flex-wrap {
+  padding: 12px !important;
+  height: auto !important;
+}
+
+.watch-party-active .watch-party-flex-wrap>div,
+.watch-party-active .watch-party-flex-wrap>.relative {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0px !important;
+  padding: 0 !important;
+}
+
+.watch-party-active .grid {
+  display: flex !important;
+  flex-direction: column !important;
+  grid-template-columns: none !important;
+}
+
+.watch-party-active footer {
+  height: auto !important;
+  padding: 16px 12px 24px 12px !important;
+  margin-bottom: 0px !important;
+  flex-wrap: wrap !important;
+  justify-content: center !important;
+  gap: 8px !important;
+}
+
+.watch-party-active header {
+  position: relative !important;
+  padding: 12px !important;
+  background: transparent !important;
+}
+
+/* ── Watch Party Harmony Panels ─────────────────────────────────── */
+.wp-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(31, 44, 52, 0.85);
+  /* Premium glass background */
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  /* Perfect pill shape across all rows */
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s ease;
+  margin-bottom: 8px;
+  /* Slightly tighter cluster for better video visibility */
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.wp-panel1 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  margin-bottom: 8px;
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Row 1: Primary Controls Area */
+.wp-primary-row {
+  padding: 8px 16px;
+  gap: 40px;
+}
+
+/* Row 2: Reactions Bar Area */
+.wp-reactions-row {
+  height: 56px;
+  padding: 0 14px;
+  gap: 8px;
+  /* Balanced emoji spacing */
+}
+
+/* Row 3: Feature Utility Area */
+.wp-feature-row {
+  padding: 8px 14px;
+  gap: 10px;
+}
+
+.wp-reaction-btn {
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 50%;
+  /* Perfect circle */
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wp-reaction-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.wp-reaction-btn:active {
+  transform: scale(0.9);
+}
+
+.wp-reaction-emoji {
+  font-size: 1.5rem;
+  line-height: 1;
+  display: block;
+  transition: transform 0.1s ease;
+}
+
+/* ── Emoji Gate Spacing — CONDITIONAL (only open when picker is active) ────── */
+.wp-emoji-gap {
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+  position: relative;
+  transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wp-emoji-gap.open {
+  height: 220px;
+  /* fits the scrollable grid */
+}
+
+/* ── Emoji Full Picker Popup (Overlay Mode) ───────────────── */
+
+.wp-full-picker-popup {
+  position: absolute;
+  bottom: calc(100% + 16px);
+  left: 0;
+  width: 100%;
+  /* Matches panel width */
+  z-index: 999;
+  pointer-events: auto;
+}
+
+.wp-full-picker {
+  background: var(--fallback-n,oklch(var(--n)));
+  border-radius: 12px;
+  padding: 12px;
+  width: 100%;
+  max-height: 260px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Hard block horizontal scroll */
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  animation: pickerFadeIn 0.2s ease-out;
+}
+
+@keyframes pickerFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wp-full-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  /* Matching reference image density */
+  gap: 4.5px;
+  width: 100%;
+}
+
+.wp-picker-emoji {
+  font-size: 20px;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wp-picker-emoji:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.wp-picker-emoji:active {
+  cursor: grabbing;
+}
+
+.wp-picker-hint {
+  font-size: 11px;
+  color: oklch(var(--bc) / 0.6);
+  text-align: center;
+  margin-top: 12px;
+}
+
+/* ── Redesigned ➕ customize button ─────────────────────────── */
+.wp-add-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1.5px dashed rgba(255, 255, 255, 0.15) !important;
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.5);
+  transition: all 0.2s ease !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wp-add-btn:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  color: white;
+}
+
+.wp-add-btn.active {
+  background: rgba(255, 255, 255, 0.2) !important;
+  border-style: solid !important;
+  color: white;
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+}
+
+/* Ensure Watch Party root is relative for popup anchoring */
+.wp-controls-root {
+  position: relative;
+  padding-bottom: 10px;
+  /* Tighter bottom air to work with low footer anchoring */
+}
+
+/* ── Emoji slot drag-target highlight ────────────────────────────────────────── */
+.wp-reaction-btn[draggable="false"] {
+  position: relative;
+}
+
+.wp-reaction-btn:focus-within {
+  outline: 2px solid rgba(25, 118, 210, 0.6);
+  outline-offset: 2px;
+}
+
+/* Drag-over highlight on individual slots */
+.wp-reaction-btn.drag-over {
+  background: rgba(25, 118, 210, 0.25) !important;
+  transform: scale(1.3);
+}
+
+.wp-row {
+  /* ensure each row centres itself horizontally in the 25% sidebar */
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto;
+}
+
+/* ── fadeUp animation for popup panels (normal mode) ─────────────────────────── */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.emoji-picker-panel.active {
+  animation: fadeUp 0.18s ease forwards;
+}
+
+/* ── Media Panel (Renamed from Watch Party Top Bar) ─────────────────────────── */
+.media-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  pointer-events: auto;
+}
+
+.media-panel button {
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.media-panel button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.media-panel button:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.media-panel button:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 255, 180, 0.4);
+}
+
+/* Active feature state - stable, no bounce */
+.media-panel button.active-feature {
+  ring: 2px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* SEARCH BAR & FLOATING DROPDOWN */
+.search-wrapper {
+  position: relative;
+  flex: 1;
+  max-width: 450px;
+  margin-left: auto;
+}
+
+.search-container {
+  width: 100%;
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.search-container input {
+  width: 100%;
+  background: var(--fallback-b3,oklch(var(--b3)));
+  color: var(--fallback-bc,oklch(var(--bc)));
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+  padding: 8px 16.5px 8px 38px;
+  font-size: 14.5px;
+  outline: none;
+  transition: border 0.2s ease, box-shadow 0.2s ease;
+}
+
+.search-container input:focus {
+  border-color: #25D366;
+  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.1);
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: oklch(var(--bc) / 0.6);
+  pointer-events: none;
+}
+
+.search-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  width: 100%;
+  z-index: 999;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.search-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  transition: 0.2s;
+  cursor: pointer;
+}
+
+.search-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.search-item .left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.search-item .file-icon {
+  color: oklch(var(--bc) / 0.6);
+}
+
+.url-text {
+  color: #cbd5f5;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-item .right {
+  margin-left: 12px;
+}
+
+.play-now-btn,
+.add-to-list-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.play-now-btn:hover {
+  background: #25D366;
+  border-color: #25D366;
+}
+
+.add-to-list-btn:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.search-item .actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* BURGER BUTTON */
+.wp-burger-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: white;
+  padding: 10px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.wp-burger-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.wp-burger-btn:active {
+  transform: scale(0.96);
+}
+
+.media-home h1,
+.coming-soon h2,
+.playlist-empty h2 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+/* WATCH PARTY HEADER BRANDING */
+.watch-party-header {
+  font-size: 28px;
+  font-weight: 800;
+  cursor: pointer;
+  letter-spacing: -0.5px;
+  user-select: none;
+  transition: opacity 0.2s ease;
+}
+
+.watch-party-header:hover {
+  opacity: 0.9;
+}
+
+.watch-party-header span {
+  color: #43e97b;
+  -webkit-text-fill-color: #43e97b;
+}
+
+/* MEDIA HOME BACKGROUND VIDEO */
+.media-bg-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+.media-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(to bottom,
+      rgba(0, 0, 0, 0.4),
+      rgba(0, 0, 0, 0.7));
+  backdrop-filter: blur(6px);
+}
+
+.media-title {
+  font-size: 48px;
+  font-weight: 800;
+  color: white;
+  letter-spacing: -1px;
+  margin: 0;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.media-subtitle {
+  font-size: 1.1rem;
+  margin-top: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  max-width: 500px;
+  line-height: 1.6;
+}
+
+.media-actions {
+  margin-top: 32px;
+  display: flex;
+  gap: 16px;
+}
+
+.media-actions button {
+  padding: 12px 28px;
+  border-radius: 30px;
+  font-weight: 600;
+  font-size: 14px;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.media-actions button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+.media-actions button:active {
+  transform: translateY(0);
+}
+
+/* Media Home Screen & Feature Placeholders */
+.media-home,
+.coming-soon,
+.playlist-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: var(--fallback-b2,oklch(var(--b2)));
+  color: white;
+  animation: fadeIn 0.5s ease-out;
+  padding: 40px;
+}
+
+/* ── Media Panel Positioning ─────────────────────────── */
+.playlist-anchor,
+.menu-anchor {
+  position: relative;
+  display: inline-block;
+}
+
+.playlist-popup {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 420px;
+  max-height: 440px;
+  background: rgba(20, 20, 20, 0.98);
+  backdrop-filter: blur(28px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  padding: 12px;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7);
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Burger Popup (Vertical Dropdown) */
+.burger-popup {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  width: 220px;
+  background: rgba(15, 26, 32, 0.98);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 10000;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  animation: fadeIn 0.15s ease-out;
+}
+
+.popup-item {
+  width: 100%;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 10px;
+  color: white;
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.popup-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.popup-item.selected {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.icon-box {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.playlist-popup::-webkit-scrollbar {
+  width: 6px;
+}
+
+.playlist-popup::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.playlist-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(31, 44, 52, 0.85);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.playlist-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.playlist-item .thumb {
+  width: 64px;
+  height: 48px;
+  background: #1A1A1A;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.playlist-item .info {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-item .title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fallback-bc,oklch(var(--bc)));
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playlist-item .subtitle {
+  font-size: 11px;
+  color: oklch(var(--bc) / 0.6);
+  display: block;
+}
+
+.playlist-item .actions {
+  display: flex;
+  gap: 6px;
+}
+
+.playlist-item .actions button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: white;
+}
+
+.playlist-item .actions button:hover {
+  transform: scale(1.1);
+}
+
+.playlist-item .actions button.play {
+  background: #22c55e;
+}
+
+.playlist-item .actions button.up {
+  background: #111;
+}
+
+.playlist-item .actions button.delete {
+  background: #ef4444;
+}
+
+.playlist-empty {
+  text-align: center;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  color: oklch(var(--bc) / 0.6);
+  font-size: 13px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+/* Media Home UI Controls Overlay */
+.media-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.media-controls {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 8px 16px;
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 100;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto;
+}
+
+.media-container:hover .media-controls {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.media-controls input[type="range"] {
+  width: 80px;
+  height: 4px;
+  cursor: pointer;
+}
+
+.media-controls button {
+  color: white;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.media-controls button:hover {
+  opacity: 1;
+}
+
+@media (max-width: 640px) {
+  .media-controls {
+    bottom: 16px;
+    right: 16px;
+    padding: 6px 12px;
+    gap: 12px;
+  }
+
+  .media-controls input[type="range"] {
+    width: 60px;
+  }
+}
+
+
+/* Media Control Panel - Standard Media UI */
+.media-control-panel-wrapper {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(900px, 92%);
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.media-control-panel {
+  width: 100%;
+  background: rgba(11, 20, 26, 0.7);
+  backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+  pointer-events: auto;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: all 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.media-container:hover .media-control-panel,
+.relative:hover .media-control-panel {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.media-icon-btn {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  border-radius: 50%;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+
+.media-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.media-volume-slider {
+  accent-color: var(--fallback-p,oklch(var(--p)));
+  height: 4px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.group\/vol:hover .media-volume-slider {
+  opacity: 1;
+}
+
+@media (max-width: 768px) {
+  .media-control-panel-wrapper {
+    min-width: 90%;
+    bottom: 16px;
+  }
+}
+
+
+/* Enhanced Media Panel - Fluid & Responsive */
+.media-panel {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  /* width: min(900px, 90%) !important; */
+  /* max-width: 1000px !important; */
+  padding: 10px 18px !important;
+  border-radius: 999px !important;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.media-panel-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 16px;
+}
+
+.left-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.progress-section {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 100px;
+}
+
+.progress-bar {
+  width: 100%;
+  flex: 1;
+}
+
+.right-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 768px) {
+  .media-panel {
+    width: 95% !important;
+    padding: 8px 12px !important;
+  }
+
+  .media-panel-inner {
+    gap: 10px;
+  }
+
+  .left-controls,
+  .right-controls {
+    gap: 8px;
+  }
+}
+
+/* VBrowser Layout & Animations */
+.vbrowser-container {
+  animation: slideUpFade 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.vbrowser-frame {
+  background: white;
+  transition: opacity 0.3s ease;
+}
+
+.vbrowser-header button:active {
+  transform: scale(0.95);
+}

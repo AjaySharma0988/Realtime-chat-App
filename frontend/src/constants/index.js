@@ -31,4 +31,6 @@ export const THEMES = [
   "dim",
   "nord",
   "sunset",
+  "whatsapp",
+  "videocall",
 ];

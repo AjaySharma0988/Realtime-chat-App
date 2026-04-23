@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useAuthStore } from "../store/useAuthStore";
-import { Eye, EyeOff, Loader2, Lock, Mail, MessageSquare, User } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Eye, EyeOff, Loader2, Lock, Mail, MessageSquare, User, Camera } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAppStore } from "../store/useAppStore";
+import ImageCropModal from "../components/ImageCropModal";
 
 import AuthImagePattern from "../components/AuthImagePattern";
 import toast from "react-hot-toast";
@@ -12,9 +14,14 @@ const SignUpPage = () => {
     fullName: "",
     email: "",
     password: "",
+    profilePic: "",
   });
+  const [cropImageSrc, setCropImageSrc] = useState(null);
+  const [isCropLoading, setIsCropLoading] = useState(false);
 
   const { signup, isSigningUp } = useAuthStore();
+  const { setActiveView } = useAppStore();
+  const navigate = useNavigate();
 
   const validateForm = () => {
     if (!formData.fullName.trim()) return toast.error("Full name is required");
@@ -26,21 +33,42 @@ const SignUpPage = () => {
     return true;
   };
 
-  const handleSubmit = (e) => {
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => setCropImageSrc(reader.result);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleCropSave = async (croppedBase64) => {
+    setIsCropLoading(true);
+    setFormData({ ...formData, profilePic: croppedBase64 });
+    setCropImageSrc(null);
+    setIsCropLoading(false);
+  };
+
+  const handleCancelCrop = () => setCropImageSrc(null);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
     const success = validateForm();
-
-    if (success === true) signup(formData);
+    if (success === true) {
+      await signup(formData);
+      setActiveView("chats");
+      navigate("/chats", { replace: true });
+    }
   };
 
   return (
     <div className="min-h-screen grid lg:grid-cols-2">
       {/* left side */}
-      <div className="flex flex-col justify-center items-center p-6 sm:p-12">
-        <div className="w-full max-w-md space-y-8">
+      <div className="flex flex-col justify-center items-center p-4 sm:p-8">
+        <div className="w-full max-w-md space-y-4">
           {/* LOGO */}
-          <div className="text-center mb-8">
+          <div className="text-center mb-2">
             <div className="flex flex-col items-center gap-2 group">
               <div
                 className="size-12 rounded-xl bg-primary/10 flex items-center justify-center 
@@ -53,7 +81,36 @@ const SignUpPage = () => {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {/* Profile Photo Upload */}
+            <div className="flex flex-col items-center gap-1">
+              <div className="relative group">
+                <img
+                  src={formData.profilePic || "/avatar.png"}
+                  alt="Profile"
+                  className="size-20 rounded-full object-cover ring-4 ring-primary/10 shadow-sm"
+                />
+                <label
+                  htmlFor="avatar-upload"
+                  className={`
+                    absolute inset-0 rounded-full flex items-center justify-center
+                    bg-black/40 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity
+                    ${isCropLoading ? "opacity-100 cursor-not-allowed" : ""}
+                  `}
+                >
+                  <Camera className="size-5 text-white" />
+                  <input
+                    id="avatar-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                    disabled={isCropLoading}
+                  />
+                </label>
+              </div>
+              <p className="text-xs text-base-content/50">Add a profile photo (optional)</p>
+            </div>
             <div className="form-control">
               <label className="label">
                 <span className="label-text font-medium">Full Name</span>
@@ -148,6 +205,15 @@ const SignUpPage = () => {
         title="Join our community"
         subtitle="Connect with friends, share moments, and stay in touch with your loved ones."
       />
+
+      {cropImageSrc && (
+        <ImageCropModal
+          imageSrc={cropImageSrc}
+          onSave={handleCropSave}
+          onCancel={handleCancelCrop}
+          isLoading={isCropLoading}
+        />
+      )}
     </div>
   );
 };

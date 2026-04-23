@@ -1,0 +1,410 @@
+/* callWindow.css — Matching the reference image exactly */
+
+@import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;500;600&display=swap');
+
+:root {
+  --wa-bg-dark: #0B141A;
+  --wa-bg-panel: #111B21;
+  --wa-bg-hover: #202C33;
+  --wa-text: #E9EDEF;
+  --wa-text-muted: #8696A0;
+  --wa-red: #F15C6D;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.wa-call-window {
+  background-color: var(--wa-bg-dark);
+  color: var(--wa-text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  margin: 0;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  user-select: none;
+}
+
+.window-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+}
+
+/* ── Media Panel (Renamed from Top Bar) ─────────────────────────── */
+.media-panel {
+  background-color: var(--wa-bg-panel);
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 0 16px;
+  z-index: 100;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  flex-shrink: 0;
+}
+
+.win-btn {
+  width: 46px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  cursor: pointer;
+}
+
+.win-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.win-btn.close:hover {
+  background: #e81123;
+}
+
+/* ── Main Area ──────────────────────────────────────────── */
+.video-container {
+  flex: 1;
+  position: relative;
+  background-color: var(--wa-bg-dark);
+  /* Solid dark */
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-feed {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: opacity 0.3s ease;
+}
+
+.video-feed.fill-mode {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* ── Main 3-dot Menu (Top Left) ────────────────────────── */
+.menu-trigger {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  /* Matched to reference image */
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  /* Appears only on hover */
+  transition: all 0.2s;
+  z-index: 60;
+}
+
+.video-wrapper:hover .menu-trigger {
+  opacity: 0.6;
+}
+
+.menu-trigger:hover {
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 1 !important;
+}
+
+/* ── Status Indicators ──────────────────────────────────── */
+.video-status-icons {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  gap: 8px;
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.video-status-icons svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ── Self Preview (PIP) ─────────────────────────────────── */
+.self-preview {
+  position: absolute;
+  width: 260px;
+  aspect-ratio: 16/9;
+  background: #111;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.85);
+  /* Deepened premium shadow for visual separation */
+  z-index: 50;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  top: 24px;
+  right: 24px;
+  cursor: pointer;
+}
+
+.self-preview:hover {
+  transform: scale(1.02);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.95);
+}
+
+.menu-trigger-small {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  /* Matched to reference image (top-left) */
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 60;
+}
+
+.self-preview:hover .menu-trigger-small {
+  opacity: 1;
+}
+
+.menu-trigger-small:hover {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+/* Status inside PIP */
+.self-preview .video-status-icons {
+  bottom: 8px;
+  left: 8px;
+}
+
+.self-preview .video-status-icons svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ── Bottom Control Bar ─────────────────────────────────── */
+.bottom-bar {
+  background-color: var(--wa-bg-panel);
+  height: 72px;
+  /* Very clean flat bar */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  z-index: 100;
+  flex-shrink: 0;
+}
+
+.bottom-bar-left,
+.bottom-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  /* Space items out evenly */
+}
+
+.bottom-bar-right {
+  justify-content: flex-end;
+}
+
+.bottom-bar-center {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  /* Precise Whatsapp spacing between icons */
+  flex: 2;
+  justify-content: center;
+}
+
+/* Minimal Flat Buttons */
+.control-btn,
+.feature-btn {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: var(--wa-text-muted);
+  border: none;
+  background: transparent;
+}
+
+.control-btn:hover,
+.feature-btn:hover {
+  background: var(--wa-bg-hover);
+  color: var(--wa-text);
+}
+
+.control-btn.active-off {
+  color: var(--wa-text);
+  background: rgba(255, 255, 255, 0.05);
+  /* Soft highlight when toggled off */
+}
+
+/* Red End Call */
+.end-call-btn {
+  background: var(--wa-red);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: filter 0.2s;
+  border: none;
+}
+
+.end-call-btn:hover {
+  filter: brightness(1.1);
+}
+
+/* ── Remote Camera Off Banner ──────────────────────────── */
+.status-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 14px;
+  color: var(--wa-text);
+  padding: 8px 16px;
+  border-radius: 6px;
+  z-index: 20;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
+/* Dropdowns */
+.dropdown-menu-custom {
+  position: absolute;
+  top: 100%;
+  margin-top: 4px;
+  left: 0;
+  background: var(--wa-bg-panel);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 140px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: none;
+  z-index: 120;
+}
+
+.dropdown-menu-custom.active {
+  display: block;
+}
+
+.menu-item-custom {
+  padding: 10px 16px;
+  font-size: 14px;
+  color: var(--wa-text);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+}
+
+.menu-item-custom:hover {
+  background: var(--wa-bg-hover);
+}
+
+/* Specific Dropdown positions */
+.menu-trigger .dropdown-menu-custom {
+  left: 0;
+}
+
+/* ── Emoji Full Picker Popup (Overlay Mode) ───────────────── */
+
+.wp-full-picker-popup {
+  position: absolute;
+  bottom: calc(100% + 16px);
+  /* precisely 16px gap above the emoji panel */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 999;
+  pointer-events: auto;
+}
+
+.wp-full-picker {
+  background: #1F2C34;
+  border-radius: 12px;
+  padding: 12px;
+  width: 320px;
+  max-height: 260px;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  animation: pickerFadeIn 0.2s ease-out;
+}
+
+@keyframes pickerFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wp-full-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+}
+
+.wp-picker-emoji {
+  font-size: 18px;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.wp-picker-emoji:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.1);
+}
+
+.wp-picker-hint {
+  font-size: 11px;
+  color: #8696A0;
+  text-align: center;
+  margin-top: 10px;
+}
+
+.menu-trigger-small .dropdown-menu-custom {
+  left: 0;
+}
