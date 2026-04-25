@@ -11,6 +11,7 @@ import CallPage from "./pages/CallPage";
 import CallModal from "./components/CallModal";
 import TopBar from "./components/TopBar";
 import LeftNavPanel from "./components/LeftNavPanel";
+import MobileLayout from "./mobile/MobileLayout";
 
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "./store/useAuthStore";
@@ -41,6 +42,16 @@ const App = () => {
 
   useEffect(() => { checkAuth(); }, [checkAuth]);
 
+  useEffect(() => {
+    const disableContextMenu = (e) => {
+      e.preventDefault();
+    };
+    document.addEventListener("contextmenu", disableContextMenu);
+    return () => {
+      document.removeEventListener("contextmenu", disableContextMenu);
+    };
+  }, []);
+
   // Start BroadcastChannel listener so main app clears call state when popup ends
   useEffect(() => {
     const cleanup = initBroadcastListener();
@@ -57,27 +68,35 @@ const App = () => {
   const showAppLayout = authUser && location.pathname !== "/call";
 
   return (
-    <div className="h-screen overflow-hidden flex flex-col bg-base-200">
+    <div className="w-full h-[100dvh] overflow-hidden flex flex-col bg-base-200">
       {showAppLayout ? (
         <>
-          <TopBar />
-          <div className="flex flex-1 overflow-hidden">
-            <LeftNavPanel />
-            <div className="flex flex-1 overflow-hidden relative z-0">
-              <Routes>
-                <Route path="/" element={<Navigate to="/chats" replace />} />
-                <Route path="/chats" element={authUser ? <HomePage /> : <Navigate to="/login" />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/profile" element={authUser ? <ProfilePage /> : <Navigate to="/login" />} />
-                <Route path="/linked-devices" element={authUser ? <LinkedDevicesPage /> : <Navigate to="/login" />} />
-                <Route path="/link-device" element={authUser ? <LinkDeviceApprovalPage /> : <Navigate to="/login" />} />
-                <Route path="*" element={<Navigate to="/chats" replace />} />
-              </Routes>
+          {/* Desktop Layout Container */}
+          <div className="hidden md:flex flex-col flex-1 overflow-hidden w-full h-full relative z-0">
+            <TopBar />
+            <div className="flex flex-1 overflow-hidden">
+              <LeftNavPanel />
+              <div className="flex flex-1 overflow-hidden relative z-0">
+                <Routes>
+                  <Route path="/" element={<Navigate to="/chats" replace />} />
+                  <Route path="/chats" element={authUser ? <HomePage /> : <Navigate to="/login" />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/profile" element={authUser ? <ProfilePage /> : <Navigate to="/login" />} />
+                  <Route path="/linked-devices" element={<LinkedDevicesPage />} />
+                  <Route path="/link-device" element={<LinkDeviceApprovalPage />} />
+                  <Route path="*" element={<Navigate to="/chats" replace />} />
+                </Routes>
+              </div>
             </div>
+          </div>
+
+          {/* Mobile Layout Root — COMPLETELY bypasses desktop constraints */}
+          <div className="md:hidden fixed inset-0 w-screen h-[100dvh] bg-base-100 overflow-hidden z-50">
+            <MobileLayout />
           </div>
         </>
       ) : (
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden w-full h-full">
           <Routes>
             <Route path="/" element={<Navigate to="/chats" replace />} />
             <Route path="/chats" element={authUser ? <HomePage /> : <Navigate to="/login" />} />

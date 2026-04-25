@@ -1,6 +1,17 @@
 import { useChatStore } from "../store/useChatStore";
 import { useAuthStore } from "../store/useAuthStore";
 import { Check, CheckCheck, FileText, Image, Mic, Phone } from "lucide-react";
+import { useState, useEffect } from "react";
+
+const MenuItem = ({ label, danger }) => (
+  <div
+    className={`px-4 py-2 text-sm cursor-pointer hover:bg-white/10 ${
+      danger ? "text-red-400" : ""
+    }`}
+  >
+    {label}
+  </div>
+);
 
 export const formatChatTime = (dateString) => {
   if (!dateString) return "";
@@ -27,6 +38,34 @@ const ChatItem = ({ user, isSelected }) => {
   const { setSelectedUser } = useChatStore();
   const { onlineUsers, authUser } = useAuthStore();
   
+  const [menu, setMenu] = useState({ visible: false, x: 0, y: 0, chat: null });
+
+  useEffect(() => {
+    const close = () => setMenu((m) => ({ ...m, visible: false }));
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close, { capture: true });
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close, { capture: true });
+    };
+  }, []);
+
+  const handleRightClick = (e, chat) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Prevent menu overflow
+    const x = Math.min(e.clientX, window.innerWidth - 240);
+    const y = Math.min(e.clientY, window.innerHeight - 300);
+
+    setMenu({
+      visible: true,
+      x,
+      y,
+      chat,
+    });
+  };
+
   const isOnline = onlineUsers.includes(user._id);
 
   // Determine last message preview
@@ -53,11 +92,13 @@ const ChatItem = ({ user, isSelected }) => {
   const isMyMessage = lastMsg?.senderId === authUser?._id;
   
   return (
-    <button
-      onClick={() => setSelectedUser(user)}
-      className={`w-full flex items-center gap-3 px-3 py-3 transition-colors select-none text-left
-        ${isSelected ? "bg-base-300" : "hover:bg-base-200"}`}
-    >
+    <>
+      <button
+        onContextMenu={(e) => handleRightClick(e, user)}
+        onClick={() => setSelectedUser(user)}
+        className={`w-full flex items-center gap-3 px-3 py-3 transition-colors select-none text-left
+          ${isSelected ? "bg-base-300" : "hover:bg-base-200"}`}
+      >
       {/* Avatar */}
       <div className="relative flex-shrink-0">
         <img
@@ -115,6 +156,27 @@ const ChatItem = ({ user, isSelected }) => {
         </div>
       </div>
     </button>
+
+    {menu.visible && (
+      <div
+        className="fixed z-[200] bg-[#202C33] text-white rounded-lg shadow-xl py-2 w-[220px]"
+        style={{ top: menu.y, left: menu.x }}
+        onClick={(e) => e.stopPropagation()}
+        onContextMenu={(e) => e.stopPropagation()}
+      >
+        <MenuItem label="Archive chat" />
+        <MenuItem label="Mute notifications" />
+        <MenuItem label="Unpin chat" />
+        <MenuItem label="Mark as unread" />
+        <MenuItem label="Remove from favourites" />
+        <MenuItem label="Close chat" />
+        <MenuItem label="Change list" />
+        <hr className="border-white/10 my-1" />
+        <MenuItem label="Clear chat" />
+        <MenuItem label="Exit group" danger />
+      </div>
+    )}
+    </>
   );
 };
 
