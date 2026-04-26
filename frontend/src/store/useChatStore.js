@@ -10,6 +10,7 @@ export const useChatStore = create((set, get) => ({
   selectedUser: null,
   isUsersLoading: false,
   isMessagesLoading: false,
+  isSendingMessage: false,
 
   getUsers: async () => {
     const cachedUsers = await idb.getUsers();
@@ -67,6 +68,9 @@ export const useChatStore = create((set, get) => ({
   },
 
   sendMessage: async (messageData) => {
+    if (get().isSendingMessage) return;
+    set({ isSendingMessage: true });
+
     const { selectedUser } = get();
     const me = useAuthStore.getState().authUser;
 
@@ -90,21 +94,36 @@ export const useChatStore = create((set, get) => ({
 
       idb.saveMessage(newMessage, me._id);
 
-      set((state) => ({
-        messages: state.messages.map(m => m._id === tempId ? newMessage : m),
-        users: state.users.map(u =>
-          u._id === selectedUser._id ? { ...u, lastMessage: newMessage } : u
-        ).sort((a, b) => {
-          const aTime = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
-          const bTime = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
-          return bTime - aTime;
-        })
-      }));
+      set((state) => {
+        const socketAlreadyAdded = state.messages.some(m => m._id === newMessage._id);
+        let newMessages;
+        
+        if (socketAlreadyAdded) {
+          // Socket beat the HTTP response: just remove the temp message
+          newMessages = state.messages.filter(m => m._id !== tempId);
+        } else {
+          // Normal flow: replace temp message with the confirmed real message
+          newMessages = state.messages.map(m => m._id === tempId ? newMessage : m);
+        }
+
+        return {
+          messages: newMessages,
+          users: state.users.map(u =>
+            u._id === selectedUser._id ? { ...u, lastMessage: newMessage } : u
+          ).sort((a, b) => {
+            const aTime = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
+            const bTime = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
+            return bTime - aTime;
+          })
+        };
+      });
     } catch (error) {
       toast.error("Offline. Message queued.");
       optimisticMsg.status = "failed";
       idb.queuePendingMessage(optimisticMsg);
       set((state) => ({ messages: state.messages.map(m => m._id === tempId ? optimisticMsg : m) }));
+    } finally {
+      set({ isSendingMessage: false });
     }
   },
 
@@ -239,7 +258,18 @@ export const useChatStore = create((set, get) => ({
   subscribeToMessages: () => {
     const socket = useAuthStore.getState().socket;
 
+    // IMPORTANT: Clear any existing listeners to prevent duplication
+    socket.off("newMessage");
+    socket.off("messageDelivered");
+    socket.off("messagesSeen");
+    socket.off("chatDeleted");
+    socket.off("messagesDeleted");
+    socket.off("messagesDeletedForEveryone");
+    socket.off("messageEdited");
+    socket.off("messageReacted");
+
     socket.on("newMessage", (newMessage) => {
+      console.log("[Socket] Received newMessage:", newMessage._id);
       const { selectedUser } = get();
       const isCurrentlyChatting = selectedUser && selectedUser._id === newMessage.senderId;
       const me = useAuthStore.getState().authUser?._id;
@@ -264,7 +294,11 @@ export const useChatStore = create((set, get) => ({
       idb.saveMessage(messageToStore, me); // Save to local IndexedDB
 
       if (isCurrentlyChatting) {
-        set({ messages: [...get().messages, messageToStore] });
+        set((state) => {
+          // Prevent UI duplication: don't append if message already exists
+          if (state.messages.some((m) => m._id === messageToStore._id)) return state;
+          return { messages: [...state.messages, messageToStore] };
+        });
       }
 
       set((state) => {

@@ -15,6 +15,21 @@ const ICE_SERVERS = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
+    {
+      urls: "turn:openrelay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    },
+    {
+      urls: "turn:openrelay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject",
+    }
   ],
 };
 
@@ -47,7 +62,7 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
   // ── Handle incoming ICE candidate ─────────────────────────────────────────
   const handleRemoteIce = useCallback(async (candidate) => {
     if (!pcRef.current) return;
-    if (remoteDescSet.current) {
+    if (pcRef.current.remoteDescription) {
       try { await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)); }
       catch (e) { console.warn("[WebRTC] addIceCandidate error:", e); }
     } else {
@@ -95,10 +110,38 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
         }
       };
 
+      pc.onconnectionstatechange = () => {
+        const s = pc.connectionState;
+        if (s === "connected") setStatus("active");
+        if (s === "failed") {
+          console.warn("[WebRTC] Connection failed, attempting ICE restart");
+          // Safely restart ICE if supported
+          if (pc.restartIce) pc.restartIce();
+          else setStatus("error");
+        }
+        if (s === "disconnected" || s === "closed") setStatus("ended");
+      };
+
       pc.oniceconnectionstatechange = () => {
         const s = pc.iceConnectionState;
         if (s === "connected" || s === "completed") setStatus("active");
-        if (s === "failed" || s === "disconnected" || s === "closed") setStatus("ended");
+        if (s === "failed") {
+          console.warn("[WebRTC] ICE Connection failed, attempting restart");
+          if (pc.restartIce) pc.restartIce();
+        }
+        if (s === "disconnected" || s === "closed") setStatus("ended");
+      };
+
+      // Failsafe: if we restart ICE, we need to handle onnegotiationneeded
+      pc.onnegotiationneeded = async () => {
+        try {
+          if (pc.signalingState !== "stable") return;
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          socket.emit("call:renegotiate", { callId: peerId, offer });
+        } catch (err) {
+          console.warn("[WebRTC] Renegotiation error:", err);
+        }
       };
 
       // 3. Offer/Answer flow
