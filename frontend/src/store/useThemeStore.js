@@ -11,4 +11,15 @@ export const useThemeStore = create((set) => ({
     localStorage.setItem("call-theme", callTheme);
     set({ callTheme });
   },
+  chatPattern: localStorage.getItem("chat-pattern") || "whatsapp",
+  setChatPattern: (chatPattern) => {
+    localStorage.setItem("chat-pattern", chatPattern);
+    set({ chatPattern });
+  },
+  customBgImage: localStorage.getItem("custom-bg-image") || null,
+  setCustomBgImage: (customBgImage) => {
+    if (customBgImage) localStorage.setItem("custom-bg-image", customBgImage);
+    else localStorage.removeItem("custom-bg-image");
+    set({ customBgImage });
+  },
 }));

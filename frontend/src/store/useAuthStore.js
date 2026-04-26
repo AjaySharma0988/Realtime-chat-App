@@ -6,6 +6,17 @@ import { io } from "socket.io-client";
 const BASE_URL =
   import.meta.env.MODE === "development" ? "http://localhost:5001" : "/";
 
+// Only these fields are safe to cache in localStorage.
+// Never store tokens, passwords, or backend-internal fields.
+const SAFE_USER_FIELDS = ["_id", "fullName", "email", "profilePic", "deletionScheduledAt"];
+const persistUser = (user) => {
+  const safe = {};
+  for (const key of SAFE_USER_FIELDS) {
+    if (user[key] !== undefined) safe[key] = user[key];
+  }
+  localStorage.setItem("chatty_user", JSON.stringify(safe));
+};
+
 export const useAuthStore = create((set, get) => ({
   authUser: null,
   isSigningUp: false,
@@ -25,7 +36,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const res = await axiosInstance.get("/auth/check");
       set({ authUser: res.data });
-      localStorage.setItem("chatty_user", JSON.stringify(res.data));
+      persistUser(res.data);
       get().connectSocket();
     } catch (error) {
       console.log("Error in checkAuth:", error);
@@ -47,7 +58,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const res = await axiosInstance.post("/auth/signup", data);
       set({ authUser: res.data });
-      localStorage.setItem("chatty_user", JSON.stringify(res.data));
+      persistUser(res.data);
       toast.success("Account created successfully");
       get().connectSocket();
     } catch (error) {
@@ -62,7 +73,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const res = await axiosInstance.post("/auth/login", data);
       set({ authUser: res.data });
-      localStorage.setItem("chatty_user", JSON.stringify(res.data));
+      persistUser(res.data);
       toast.success("Logged in successfully");
       get().connectSocket();
     } catch (error) {
@@ -92,7 +103,7 @@ export const useAuthStore = create((set, get) => ({
     try {
       const res = await axiosInstance.put("/auth/update-profile", data);
       set({ authUser: res.data });
-      localStorage.setItem("chatty_user", JSON.stringify(res.data));
+      persistUser(res.data);
       toast.success("Profile updated successfully");
     } catch (error) {
       console.log("error in update profile:", error);
@@ -120,7 +131,7 @@ export const useAuthStore = create((set, get) => ({
       await axiosInstance.post("/auth/restore-account");
       const updatedUser = { ...get().authUser, deletionScheduledAt: null };
       set({ authUser: updatedUser });
-      localStorage.setItem("chatty_user", JSON.stringify(updatedUser));
+      persistUser(updatedUser);
       toast.success("Account restored successfully!");
     } catch (error) {
       toast.error(error.response.data.message || "Failed to restore account");
@@ -133,7 +144,8 @@ export const useAuthStore = create((set, get) => ({
     if (!authUser || socket) return;
 
     const newSocket = io(BASE_URL, {
-      query: { userId: authUser._id },
+      query: { userId: authUser._id }, // kept for backward-compat with any older listeners
+      withCredentials: true,           // REQUIRED: sends jwt httpOnly cookie in handshake
     });
     newSocket.connect();
     set({ socket: newSocket });
@@ -143,6 +155,11 @@ export const useAuthStore = create((set, get) => ({
       import("./useChatStore").then((mod) => {
         mod.useChatStore.getState().syncPendingMessages?.();
       });
+    });
+
+    // Log socket auth failures so they're visible in the browser console
+    newSocket.on("connect_error", (err) => {
+      console.error("[Socket] Connection error:", err.message);
     });
 
     // ─── Online presence ──────────────────────────────────────────────────

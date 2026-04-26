@@ -1,8 +1,9 @@
 import { useRef, useState, useEffect } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { useAuthStore } from "../store/useAuthStore";
-import { Image, Send, X, Paperclip, FileText, Mic, Trash2, CornerUpLeft } from "lucide-react";
+import { Image, Send, X, Paperclip, FileText, Mic, Trash2, CornerUpLeft, Smile, Camera, Headphones, User, BarChart2, Calendar, Sticker } from "lucide-react";
 import toast from "react-hot-toast";
+import EmojiPicker from "./EmojiPicker";
 
 const getSupportedMimeType = () => {
   const types = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
@@ -37,12 +38,29 @@ const ReplyStrip = ({ message, onCancel }) => {
   );
 };
 
-const MessageInput = ({ replyToMsg, onCancelReply }) => {
+// ── Attachment Item Component ──────────────────────────────────────────────
+const AttachmentItem = ({ icon: Icon, label, onClick, color }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="w-full flex items-center gap-4 px-4 py-3 text-[15px] hover:bg-white/5 transition-colors text-left text-zinc-200 group"
+  >
+    <Icon className={`size-5 ${color} transition-transform group-active:scale-90`} />
+    <span className="font-medium">{label}</span>
+  </button>
+);
+
+const MessageInput = ({ replyToMsg, onCancelReply, onOpenCamera, injectedImage, onSendComplete, isOverlayMode }) => {
   const [text, setText] = useState("");
-  const [imagePreview, setImagePreview] = useState(null);
+  const [imagePreview, setImagePreview] = useState(injectedImage || null);
+
+  useEffect(() => {
+    setImagePreview(injectedImage || null);
+  }, [injectedImage]);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
   const fileInputRef     = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -106,6 +124,9 @@ const MessageInput = ({ replyToMsg, onCancelReply }) => {
     if (fileInputRef.current) fileInputRef.current.value = "";
     onCancelReply?.();
     
+    // Instantly close the camera overlay if active
+    if (onSendComplete) onSendComplete();
+    
     try {
       await sendMessage(messagePayload);
     } catch (error) {
@@ -161,6 +182,10 @@ const MessageInput = ({ replyToMsg, onCancelReply }) => {
     setRecordingDuration(0);
     toast("Recording cancelled", { icon: "🗑️" });
   };
+  
+  const handleEmojiSelect = (emoji) => {
+    setText((prev) => prev + emoji);
+  };
 
   if (isRecording) {
     return (
@@ -186,10 +211,10 @@ const MessageInput = ({ replyToMsg, onCancelReply }) => {
   }
 
   return (
-    <div className="px-4 pb-4 pt-3 bg-base-200 flex-shrink-0 relative">
+    <div className={`px-4 pb-4 pt-3 ${isOverlayMode ? 'bg-[#0B141A]' : 'bg-transparent'} flex-shrink-0 relative z-20 transition-colors duration-200`}>
       {replyToMsg && <ReplyStrip message={replyToMsg} onCancel={onCancelReply} />}
 
-      {imagePreview && (
+      {imagePreview && !isOverlayMode && (
         <div className="mb-2">
           <div className="relative inline-block">
             <img src={imagePreview} alt="Preview" className="w-20 h-20 object-cover rounded-xl border border-base-300" />
@@ -201,47 +226,115 @@ const MessageInput = ({ replyToMsg, onCancelReply }) => {
       )}
 
       <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-        <div className="relative flex-shrink-0">
-          <button type="button" onClick={() => setShowAttachMenu((v) => !v)} className="p-2 rounded-full hover:bg-base-300 transition-colors">
-            <Paperclip className="size-5 text-base-content/60" />
-          </button>
+        <div className="flex-1 bg-[#202C33] rounded-full flex items-center px-3 py-1.5 min-h-[52px] relative border border-white/5">
+          {/* ATTACHMENT POPUP */}
           {showAttachMenu && (
-            <div className="absolute bottom-12 left-0 bg-base-300 rounded-xl shadow-2xl overflow-hidden w-48 z-20 border border-base-200">
-              <button type="button" onClick={() => fileInputRef.current?.click()} className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-base-200 transition-colors text-left text-base-content">
-                <div className="size-8 rounded-full bg-purple-500 flex items-center justify-center"><Image className="size-4 text-white" /></div>
-                Photos & Videos
-              </button>
-              <button type="button" onClick={() => { toast("Document sharing coming soon!", { icon: "📄" }); setShowAttachMenu(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-base-200 transition-colors text-left text-base-content">
-                <div className="size-8 rounded-full bg-blue-500 flex items-center justify-center"><FileText className="size-4 text-white" /></div>
-                Document
-              </button>
+            <div className="absolute bottom-full mb-4 left-0 bg-[#233138] rounded-2xl shadow-2xl overflow-hidden w-64 z-50 border border-white/10 animate-in slide-in-from-bottom-4">
+              <div className="flex flex-col py-2">
+                <AttachmentItem 
+                  onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }} 
+                  icon={FileText} label="Document" color="text-[#7f66ff]" 
+                />
+                <AttachmentItem 
+                  onClick={() => { fileInputRef.current?.click(); setShowAttachMenu(false); }} 
+                  icon={Image} label="Photos & videos" color="text-[#007bfc]" 
+                />
+                <AttachmentItem 
+                  onClick={() => { 
+                    if (onOpenCamera) onOpenCamera(); 
+                    setShowAttachMenu(false); 
+                  }} 
+                  icon={Camera} label="Camera" color="text-[#ff2e74]" 
+                />
+                <AttachmentItem 
+                  onClick={() => { toast("Audio sharing coming soon!"); setShowAttachMenu(false); }} 
+                  icon={Headphones} label="Audio" color="text-[#ff8c00]" 
+                />
+                <AttachmentItem 
+                  onClick={() => { toast("Contact sharing coming soon!"); setShowAttachMenu(false); }} 
+                  icon={User} label="Contact" color="text-[#00a884]" 
+                />
+                <AttachmentItem 
+                  onClick={() => { toast("Polls coming soon!"); setShowAttachMenu(false); }} 
+                  icon={BarChart2} label="Poll" color="text-[#ffbc2e]" 
+                />
+                <AttachmentItem 
+                  onClick={() => { toast("Events coming soon!"); setShowAttachMenu(false); }} 
+                  icon={Calendar} label="Event" color="text-[#ff4500]" 
+                />
+                <AttachmentItem 
+                  onClick={() => { toast("Sticker maker coming soon!"); setShowAttachMenu(false); }} 
+                  icon={Sticker} label="New sticker" color="text-[#00bfa5]" 
+                />
+              </div>
             </div>
           )}
-        </div>
 
-        <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageChange} />
+          {/* EMOJI PICKER POPUP */}
+          <EmojiPicker 
+            isOpen={showEmojiPicker} 
+            onClose={() => setShowEmojiPicker(false)}
+            onSelect={handleEmojiSelect}
+          />
 
-        <div className="flex-1 bg-base-300 rounded-2xl px-4 flex items-center gap-2" onClick={() => setShowAttachMenu(false)}>
+          {/* ATTACHMENT / PLUS BUTTON */}
+          <button 
+            type="button" 
+            onClick={() => {
+              setShowAttachMenu((v) => !v);
+              setShowEmojiPicker(false);
+            }} 
+            className={`p-2 transition-all active:scale-90 ${showAttachMenu ? "text-primary rotate-45" : "text-zinc-400 hover:text-zinc-200"}`}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="size-6">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+
+          {/* EMOJI BUTTON */}
+          <button 
+            type="button" 
+            className={`p-2 transition-colors ${showEmojiPicker ? "text-primary" : "text-zinc-400 hover:text-zinc-200"}`}
+            onClick={() => {
+              setShowEmojiPicker(!showEmojiPicker);
+              setShowAttachMenu(false);
+            }}
+          >
+            <Smile className="size-6" />
+          </button>
+
+          {/* TEXT INPUT */}
           <input
             type="text"
-            className="flex-1 py-2.5 bg-transparent text-sm text-base-content placeholder:text-base-content/40 outline-none"
+            className="flex-1 py-2 bg-transparent text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none px-2"
             placeholder="Type a message"
             value={text}
             onChange={(e) => setText(e.target.value)}
+            onFocus={() => setShowAttachMenu(false)}
           />
+
+          {/* MIC / SEND (Inside the bar) */}
+          <div className="flex items-center pr-1">
+            {text.trim() || imagePreview ? (
+              <button 
+                type="submit" 
+                className="size-9 rounded-full bg-[#00a884] flex items-center justify-center hover:opacity-90 transition-all active:scale-90"
+              >
+                <Send className="size-4 text-black fill-black" style={{ transform: "rotate(-10deg)" }} />
+              </button>
+            ) : (
+              <button 
+                type="button" 
+                onClick={startRecording} 
+                className="p-2 text-zinc-400 hover:text-zinc-200 transition-all active:scale-90"
+              >
+                <Mic className="size-6" />
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex-shrink-0">
-          {text.trim() || imagePreview ? (
-            <button type="submit" className="size-10 rounded-full bg-primary flex items-center justify-center hover:opacity-90 transition-all duration-150">
-              <Send className="size-4 text-primary-content" />
-            </button>
-          ) : (
-            <button type="button" onClick={startRecording} className="size-10 rounded-full hover:bg-base-300 flex items-center justify-center transition-all duration-150">
-              <Mic className="size-5 text-base-content/60" />
-            </button>
-          )}
-        </div>
+        <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageChange} />
       </form>
     </div>
   );

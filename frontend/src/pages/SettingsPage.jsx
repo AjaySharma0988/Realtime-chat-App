@@ -6,7 +6,7 @@ import {
   Settings, Shield, Lock, Bell, MessageSquare,
   HardDrive, ChevronRight, Globe, Smartphone, Send,
   Palette, Layout, Wifi, Database, ArrowLeft, Search,
-  HelpCircle, Info, Keyboard,
+  HelpCircle, Info, Keyboard, Image as ImageIcon
 } from "lucide-react";
 import SidebarBase from "../components/SidebarBase";
 import { useAppStore } from "../store/useAppStore";
@@ -58,7 +58,7 @@ const NavRow = ({ icon: Icon, label, sub }) => (
 );
 
 // ── Per-section content ─────────────────────────────────────────────────────
-const SectionContent = ({ section, theme, setTheme, onDeleteClick }) => {
+const SectionContent = ({ section, theme, setTheme, chatPattern, setChatPattern, customBgImage, setCustomBgImage, onDeleteClick }) => {
   const [notifs, setNotifs] = useState({
     messages: true,
     groups: true,
@@ -80,6 +80,18 @@ const SectionContent = ({ section, theme, setTheme, onDeleteClick }) => {
       <div className="h-1 w-12 bg-primary rounded-full mt-2" />
     </div>
   );
+
+  const handleCustomBgUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setCustomBgImage(reader.result);
+        setChatPattern('custom');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   switch (section) {
     case "general":
@@ -229,7 +241,49 @@ const SectionContent = ({ section, theme, setTheme, onDeleteClick }) => {
                   ))}
                 </div>
               </div>
-              <NavRow icon={Palette} label="Chat wallpaper" sub="Custom background for your conversations" />
+            </section>
+
+            <section>
+              <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Chat Background</h3>
+              <p className="text-xs text-base-content/50 mb-4">Choose a subtle pattern to overlay on your chat background</p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {['whatsapp', 'dots', 'grid', 'squares', 'cubes', 'diagonal', 'zigzag', 'circles', 'cross', 'lines', 'triangles'].map((pattern) => (
+                  <div
+                    key={pattern}
+                    onClick={() => setChatPattern(pattern)}
+                    className={`h-24 rounded-xl cursor-pointer border-2 transition-all relative overflow-hidden bg-base-200 ${chatPattern === pattern ? "border-primary" : "border-transparent hover:border-base-content/20"}`}
+                  >
+                    <div 
+                      className="absolute inset-0 opacity-[0.2]" 
+                      style={{ 
+                        backgroundImage: pattern === 'whatsapp' 
+                          ? `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")` 
+                          : `url('/patterns/${pattern}.svg')`, 
+                        backgroundSize: pattern === 'whatsapp' ? '200px' : 'auto',
+                        backgroundRepeat: 'repeat'
+                      }} 
+                    />
+                    <div className="absolute inset-x-0 bottom-0 p-1.5 bg-base-300/80 backdrop-blur-sm flex justify-center">
+                      <span className="text-[10px] font-medium text-base-content capitalize">{pattern}</span>
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Custom Image Upload */}
+                <label
+                  className={`h-24 rounded-xl cursor-pointer border-2 transition-all relative overflow-hidden bg-base-200 flex items-center justify-center ${chatPattern === 'custom' ? "border-primary" : "border-transparent hover:border-base-content/20"}`}
+                >
+                  <input type="file" accept="image/*" className="hidden" onChange={handleCustomBgUpload} />
+                  {customBgImage ? (
+                    <div className="absolute inset-0 opacity-50" style={{ backgroundImage: `url(${customBgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+                  ) : (
+                    <ImageIcon className="size-6 text-base-content/30" />
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 p-1.5 bg-base-300/80 backdrop-blur-sm flex justify-center z-10">
+                    <span className="text-[10px] font-medium text-base-content capitalize">Custom</span>
+                  </div>
+                </label>
+              </div>
             </section>
 
             <section>
@@ -255,9 +309,31 @@ const SectionContent = ({ section, theme, setTheme, onDeleteClick }) => {
                 </div>
                 {/* Mock messages */}
                 <div className="p-6 space-y-4 bg-base-100 min-h-[160px] relative overflow-hidden">
-                  <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]" />
+                  {chatPattern === 'custom' && customBgImage && (
+                    <div 
+                      className="absolute inset-0 z-0 pointer-events-none opacity-[0.4] dark:opacity-[0.2]"
+                      style={{ 
+                        backgroundImage: `url(${customBgImage})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        backgroundRepeat: 'no-repeat',
+                      }}
+                    />
+                  )}
+                  {chatPattern !== 'custom' && (
+                    <div 
+                      className={`absolute inset-0 z-0 pointer-events-none ${chatPattern === 'whatsapp' ? 'opacity-[0.15] dark:invert' : 'opacity-[0.08]'}`}
+                      style={{ 
+                        backgroundImage: chatPattern === 'whatsapp' 
+                          ? `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")` 
+                          : `url('/patterns/${chatPattern}.svg')`,
+                        backgroundSize: chatPattern === 'whatsapp' ? '400px' : 'auto',
+                        backgroundRepeat: 'repeat',
+                      }}
+                    />
+                  )}
                   {PREVIEW_MESSAGES.map((m) => (
-                    <div key={m.id} className={`flex ${m.isSent ? "justify-end" : "justify-start"}`}>
+                    <div key={m.id} className={`flex relative z-10 ${m.isSent ? "justify-end" : "justify-start"}`}>
                       <div
                         className={`max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm text-sm animate-in fade-in slide-in-from-${m.isSent ? 'right' : 'left'}-4 duration-500`}
                         style={{
@@ -354,7 +430,7 @@ const SectionContent = ({ section, theme, setTheme, onDeleteClick }) => {
 
 // ── Main Settings Page ──────────────────────────────────────────────────────
 const SettingsPage = () => {
-  const { theme, setTheme } = useThemeStore();
+  const { theme, setTheme, chatPattern, setChatPattern, customBgImage, setCustomBgImage } = useThemeStore();
   const [activeSection, setActiveSection] = useState("chats");
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
@@ -445,6 +521,10 @@ const SettingsPage = () => {
             section={activeSection}
             theme={theme}
             setTheme={setTheme}
+            chatPattern={chatPattern}
+            setChatPattern={setChatPattern}
+            customBgImage={customBgImage}
+            setCustomBgImage={setCustomBgImage}
             onDeleteClick={() => setShowDeleteModal(true)}
           />
 

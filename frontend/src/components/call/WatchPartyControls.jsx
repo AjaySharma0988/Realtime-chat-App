@@ -20,14 +20,7 @@ import {
   MessageSquare, Hand, Smile, UserPlus, MonitorPlay
 } from "lucide-react";
 
-// ── All available emojis for the full picker ─────────────────────────────────
-const ALL_EMOJIS = [
-  "😎", "🥳", "😭", "🤣", "💯", "✨", "🙌", "🫶", "💪", "🤩", "😮",
-  "😢", "🔥", "👏", "🎉", "😍", "🤔", "👍", "🤞🏻", "🤏🏻", "👆🏻", "👇🏻",
-  "🤘🏻", "👋🏻", "🤦🏻", "🤦🏻‍♀️", "🤧", "🤮", "🥵", "😪", "👻", "❤️", "😂",
-  "😅", "🥲", "😤", "🤯", "🥹", "🤑", "😏", "🫡", "🤝", "❓", "🎊",
-  "🎶", "💥", "⚡", "🌟", "🍿", "🎬", "🎭", "🏆", "🎯",
-];
+import { ALL_EMOJIS } from "../../constants/emojis";
 
 const DEFAULT_SLOTS = ["👍", "❤️", "😂", "😮", "😢"];
 

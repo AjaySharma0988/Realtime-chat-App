@@ -5,6 +5,10 @@ import User from "../models/user.model.js";
 import { generateToken } from "../lib/utils.js";
 import { io } from "../lib/socket.js";
 
+// UUID v4 format validator
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isValidUUID = (id) => typeof id === "string" && UUID_REGEX.test(id);
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 const parseUA = (ua = "") => {
   const ua_ = ua.toLowerCase();
@@ -60,6 +64,15 @@ export const linkDevice = async (req, res) => {
     const { sessionId, deviceName } = req.body;
     const userId = req.user._id;
 
+    if (!isValidUUID(sessionId)) {
+      return res.status(400).json({ error: "Invalid session ID" });
+    }
+
+    // Sanitize deviceName length to prevent abuse
+    const safeName = typeof deviceName === "string"
+      ? deviceName.slice(0, 100).replace(/[<>"'&]/g, "")
+      : undefined;
+
     const session = await QRSession.findOne({ sessionId });
     if (!session) return res.status(404).json({ message: "QR session not found" });
     if (session.status !== "pending") return res.status(400).json({ message: "QR already used or expired" });
@@ -80,7 +93,7 @@ export const linkDevice = async (req, res) => {
     // Register the new device
     await LinkedDevice.findOneAndUpdate(
       { userId, deviceId: sessionId },
-      { userId, deviceId: sessionId, deviceName: deviceName || `${browser} on ${os}`, browser, os, lastActive: new Date(), isActive: true },
+      { userId, deviceId: sessionId, deviceName: safeName || `${browser} on ${os}`, browser, os, lastActive: new Date(), isActive: true },
       { upsert: true, new: true }
     );
 
@@ -103,6 +116,7 @@ export const linkDevice = async (req, res) => {
 export const getQRStatus = async (req, res) => {
   try {
     const { sessionId } = req.params;
+    if (!isValidUUID(sessionId)) return res.status(400).json({ status: "invalid" });
     const session = await QRSession.findOne({ sessionId });
     if (!session) return res.status(404).json({ status: "expired" });
     if (session.expiresAt < new Date()) return res.status(200).json({ status: "expired" });
@@ -155,7 +169,8 @@ export const updateDeviceActivity = async (req, res) => {
 export const qrLogin = async (req, res) => {
   try {
     const { sessionId } = req.body;
-    if (!sessionId) return res.status(400).json({ message: "sessionId is required" });
+    if (!sessionId) return res.status(400).json({ error: "sessionId is required" });
+    if (!isValidUUID(sessionId)) return res.status(400).json({ error: "Invalid session ID" });
 
     const session = await QRSession.findOne({ sessionId });
     if (!session) return res.status(400).json({ message: "QR session not found" });

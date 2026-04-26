@@ -1,5 +1,6 @@
 import { useChatStore } from "../store/useChatStore";
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { useThemeStore } from "../store/useThemeStore";
 
 import ChatHeader from "./ChatHeader";
 import MessageInput from "./MessageInput";
@@ -10,6 +11,7 @@ import ContextMenu from "./ContextMenu";
 import SelectActionBar from "./SelectActionBar";
 import ForwardModal from "./ForwardModal";
 import { MessageBubble } from "./MessageBubble";
+import CameraOverlay from "./CameraOverlay";
 
 import { useAuthStore } from "../store/useAuthStore";
 import { formatMessageTime } from "../lib/utils";
@@ -78,6 +80,7 @@ const ChatContainer = () => {
     deleteChat, bulkDeleteMessages, updateMessage,
   } = useChatStore();
   const { authUser } = useAuthStore();
+  const { chatPattern, customBgImage } = useThemeStore();
 
   const messageEndRef = useRef(null);
   const longPressRef = useRef(null);
@@ -88,6 +91,8 @@ const ChatContainer = () => {
   const [isContactPanelOpen, setIsContactPanelOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraImage, setCameraImage] = useState(null);
 
   // ── Search ──────────────────────────────────────────────────────────────────
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -122,6 +127,8 @@ const ChatContainer = () => {
     setHighlightedMsgId(null); setReplyToMsg(null);
     setContextMenu(null); setForwardMessages(null);
     setEditingState(null);
+    setIsCameraOpen(false);
+    setCameraImage(null);
   }, [selectedUser._id]);
 
   useEffect(() => {
@@ -302,14 +309,14 @@ const ChatContainer = () => {
       <div className="flex-1 flex flex-col overflow-auto">
         <ChatHeader onOpenContactPanel={() => setIsContactPanelOpen(true)} onSearchToggle={() => setIsSearchOpen((v) => !v)} isSearchOpen={isSearchOpen} onDeleteChat={() => setShowDeleteModal(true)} />
         <MessageSkeleton />
-        <MessageInput replyToMsg={null} onCancelReply={() => { }} />
+        <MessageInput replyToMsg={null} onCancelReply={() => { }} onOpenCamera={() => { setIsCameraOpen(true); setCameraImage(null); }} />
       </div>
     );
   }
 
   return (
     <div className="flex-1 flex overflow-hidden">
-      <div className="flex-1 flex flex-col overflow-hidden bg-base-100 min-w-0">
+      <div className="flex-1 flex flex-col overflow-hidden bg-base-100 min-w-0 relative">
 
         <ChatHeader
           onOpenContactPanel={() => setIsContactPanelOpen((v) => !v)}
@@ -346,14 +353,47 @@ const ChatContainer = () => {
           </div>
         )}
 
-        {/* ── Message list ─────────────────────────────────────────────────── */}
-        <div
-          className="flex-1 overflow-y-auto px-4 py-3 space-y-1"
+        {/* ── Main Content Area (Background + Camera/Messages + Input) ─────────────────────────────────────────── */}
+        <div 
+          className="flex-1 flex flex-col relative overflow-hidden bg-base-100"
           onContextMenu={handleChatBgRightClick}
           onClick={() => { setHighlightedMsgId(null); setContextMenu(null); }}
-          style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")` }}
         >
-          {messages.map((message, idx) => {
+          {/* ── Background Layers ── */}
+          {!isCameraOpen && chatPattern === 'custom' && customBgImage && (
+            <div 
+              className="absolute inset-0 z-0 pointer-events-none opacity-[0.4] dark:opacity-[0.2]"
+              style={{ 
+                backgroundImage: `url(${customBgImage})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+              }}
+            />
+          )}
+          {!isCameraOpen && chatPattern !== 'custom' && (
+            <div 
+              className={`absolute inset-0 z-0 pointer-events-none ${chatPattern === 'whatsapp' ? 'opacity-[0.15] dark:invert' : 'opacity-[0.08]'}`}
+              style={{ 
+                backgroundImage: chatPattern === 'whatsapp' 
+                  ? `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")` 
+                  : `url('/patterns/${chatPattern}.svg')`,
+                backgroundSize: chatPattern === 'whatsapp' ? '400px' : 'auto',
+                backgroundRepeat: 'repeat',
+              }}
+            />
+          )}
+
+          {isCameraOpen ? (
+            <CameraOverlay 
+              onClose={() => { setIsCameraOpen(false); setCameraImage(null); }}
+              cameraImage={cameraImage}
+              onCapture={(img) => setCameraImage(img)}
+              onRetake={() => setCameraImage(null)}
+            />
+          ) : (
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 relative z-10">
+              {messages.map((message, idx) => {
             const isSent = message.senderId === authUser._id;
             const isLast = idx === messages.length - 1;
             const isMatch = searchMatches.includes(message._id);
@@ -421,7 +461,8 @@ const ChatContainer = () => {
               <p className="text-sm">No messages found for "{searchQuery}"</p>
             </div>
           )}
-        </div>
+          </div>
+        )}
 
         {/* Deactivated account banner */}
         {selectedUser?.deletionScheduledAt && (
@@ -442,8 +483,18 @@ const ChatContainer = () => {
         {isSelectMode ? (
           <SelectActionBar count={selectedMsgIds.size} onCopy={handleBulkCopy} onDelete={handleBulkDelete} onForward={handleBulkForward} onDownload={handleBulkDownload} onClose={exitSelectMode} />
         ) : (
-          <MessageInput replyToMsg={replyToMsg} onCancelReply={() => setReplyToMsg(null)} />
+          (!isCameraOpen || cameraImage) && (
+            <MessageInput 
+              replyToMsg={replyToMsg} 
+              onCancelReply={() => setReplyToMsg(null)} 
+              onOpenCamera={() => { setIsCameraOpen(true); setCameraImage(null); }} 
+              injectedImage={cameraImage}
+              isOverlayMode={isCameraOpen && !!cameraImage}
+              onSendComplete={() => { setIsCameraOpen(false); setCameraImage(null); }}
+            />
+          )
         )}
+        </div>
       </div>
 
       {/* ── Overlays ───────────────────────────────────────────────────────── */}

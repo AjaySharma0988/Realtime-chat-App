@@ -1,6 +1,8 @@
 import { Server } from "socket.io";
 import http from "http";
 import express from "express";
+import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import Call from "../models/call.model.js";
 
 const app = express();
@@ -17,40 +19,104 @@ const io = new Server(server, {
       ],
     credentials: true,
   },
+  // 5 MB cap — SDP offers + callerInfo can be several KB; generous but still bounded
+  maxHttpBufferSize: 5e6,
 });
 
+// ─── Socket Authentication Middleware ─────────────────────────────────────
+// Runs ONCE per connection. After this, socket.verifiedUserId is trusted forever.
+// No per-event re-authentication — this is the WebRTC-safe pattern.
+io.use((socket, next) => {
+  try {
+    let token = null;
+
+    // ── Primary path: read JWT from httpOnly cookie ──────────────────────
+    // Requires withCredentials:true on the client socket connection.
+    const raw = socket.handshake.headers.cookie || "";
+    const match = raw.match(/(?:^|;\s*)jwt=([^;]+)/);
+    if (match?.[1]) {
+      // URL-decode in case the browser encoded the token value
+      try { token = decodeURIComponent(match[1]); } catch { token = match[1]; }
+    }
+
+    // ── Fallback: auth.token sent in socket handshake options ─────────────
+    // Used by the call popup window which may not have cookie access.
+    if (!token && socket.handshake.auth?.token) {
+      token = socket.handshake.auth.token;
+    }
+
+    if (!token) {
+      console.warn("[Socket:Auth] No token found — rejecting", socket.id);
+      return next(new Error("Unauthorized"));
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      console.warn("[Socket:Auth] Invalid token —", err.message);
+      return next(new Error("Unauthorized"));
+    }
+
+    if (!decoded?.userId) return next(new Error("Unauthorized"));
+
+    socket.verifiedUserId = decoded.userId;
+    next();
+  } catch (err) {
+    console.error("[Socket:Auth] Unexpected error:", err.message);
+    next(new Error("Unauthorized"));
+  }
+});
+
+
 export function getReceiverSocketId(userId) {
-  // Returns the userId itself, which represents the room containing all sockets for that user.
   return userId;
 }
 
-// used to store online users
-const userSocketMap = {}; // {userId: socketId}
-const activeCalls = new Map(); // { callerUserId : { to, offer, callType, callerInfo, timestamp } }
+// ─── Helpers ──────────────────────────────────────────────────────────────
+// ObjectId check — all MongoDB user IDs and message IDs pass this.
+const isValidObjectId = (id) =>
+  typeof id === "string" && mongoose.Types.ObjectId.isValid(id);
 
+// callId is typically a user ID (ObjectId string) or a UUID — allow both formats.
+// We only enforce type and a sane max length.
+const isValidCallId = (id) =>
+  typeof id === "string" && id.length > 0 && id.length <= 150;
+
+const MAX_EMOJI_LENGTH = 10;
+
+// ─── In-memory stores ─────────────────────────────────────────────────────
+const userSocketMap = {}; // { userId: socketId }
+const activeCalls = new Map(); // { callerUserId: { to, offer, callType, callerInfo, ... } }
+
+// ─── Background DB helper — NEVER blocks signaling ────────────────────────
+// Fire-and-forget: the caller DOES NOT await this. The call proceeds immediately.
+// DB failure is logged but never interrupts the WebRTC flow.
+const persistAsync = (fn, label) => {
+  fn().catch((err) => console.error(`[Socket:DB] ${label}:`, err.message));
+};
+
+// ─── Connection handler ───────────────────────────────────────────────────
 io.on("connection", (socket) => {
-  console.log("A user connected", socket.id);
+  // ALWAYS use the server-verified userId. Never trust socket.handshake.query.
+  const userId = socket.verifiedUserId;
+  console.log("[Socket] connected", socket.id, "uid:", userId);
 
-  const userId = socket.handshake.query.userId;
-  if (userId) {
-    socket.join(userId); // Join native socket.io room for multi-tab support
-    userSocketMap[userId] = socket.id; // Still used just for getOnlineUsers string payload
+  socket.join(userId);
+  userSocketMap[userId] = socket.id;
 
-    // Delivery sweep: Check if anyone is actively ringing this newly logged-in user
-    for (const [callerId, session] of activeCalls.entries()) {
-      if (session.to === userId && session.status === "ringing") {
-        // If the ringing offer is less than 60000ms old, instantly connect it!
-        if (Date.now() - session.timestamp < 60_000) {
-          io.to(socket.id).emit("incoming-call", {
-            from: callerId,
-            offer: session.offer,
-            callType: session.callType,
-            callerInfo: session.callerInfo
-          });
-        } else {
-          // Stale ring, purge it
-          activeCalls.delete(callerId);
-        }
+  // ── Delivery sweep: re-ring any pending call for this user ───────────────
+  for (const [callerId, session] of activeCalls.entries()) {
+    if (session.to === userId && session.status === "ringing") {
+      if (Date.now() - session.timestamp < 60_000) {
+        io.to(socket.id).emit("incoming-call", {
+          from: callerId,
+          offer: session.offer,
+          callType: session.callType,
+          callerInfo: session.callerInfo,
+        });
+      } else {
+        activeCalls.delete(callerId);
       }
     }
   }
@@ -58,308 +124,341 @@ io.on("connection", (socket) => {
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
   // ─── Chat Message Events ──────────────────────────────────────────────────
-  // (handled in controllers via getReceiverSocketId + io.to().emit())
-
   socket.on("mark-delivered", async ({ messageId, senderId }) => {
+    if (!isValidObjectId(messageId) || !isValidObjectId(senderId)) return;
     try {
       const Message = (await import("../models/message.model.js")).default;
       await Message.updateOne(
         { _id: messageId, status: "sent" },
         { $set: { status: "delivered" } }
       );
-
       io.to(senderId).emit("messageDelivered", { messageId });
     } catch (err) {
-      console.error("[Socket] Failed to mark delivered:", err);
+      console.error("[Socket] Failed to mark delivered:", err.message);
     }
   });
 
-  // ─── WebRTC Signaling ─────────────────────────────────────────────────────
-  socket.on("call-user", async ({ to, offer, callType, callerInfo }) => {
-    let callerRecordId = null;
-    let receiverRecordId = null;
+  // ─── WebRTC Signaling — CRITICAL PATH ────────────────────────────────────
+  // Rule: EMIT FIRST, persist to DB in background.
+  // No DB call may block or delay any signaling event.
 
-    try {
-      const callerCall = new Call({
-        userId: userId,
-        peerId: to,
-        type: "outgoing",
-        status: "missed",
-        callType,
-      });
-      const receiverCall = new Call({
-        userId: to,
-        peerId: userId,
-        type: "incoming",
-        status: "missed",
-        callType,
-      });
-
-      const [savedCaller, savedReceiver] = await Promise.all([
-        callerCall.save(),
-        receiverCall.save()
-      ]);
-      callerRecordId = savedCaller._id;
-      receiverRecordId = savedReceiver._id;
-      
-      // Notify both users to refresh history (for the new missed/outgoing entries)
-      io.to(userId).emit("callHistoryUpdated");
-      io.to(to).emit("callHistoryUpdated");
-    } catch (err) {
-      console.error("[Socket] Failed to create call history records:", err);
+  socket.on("call-user", ({ to, offer, callType, callerInfo }) => {
+    // Input validation (lightweight — no async, no DB)
+    if (!isValidObjectId(to)) {
+      console.warn("[Socket:Security] call-user: invalid 'to' ObjectId", { to, from: userId });
+      return;
     }
+    if (!offer || typeof offer !== "object") return;
+    if (!["audio", "video"].includes(callType)) return;
 
+    // ── Register active call session immediately (in-memory, zero latency) ──
+    // This is the source of truth for the call lifecycle.
+    // DB records are created in the background below.
     activeCalls.set(userId, {
-      to, offer, callType, callerInfo, timestamp: Date.now(),
+      to, offer, callType, callerInfo,
+      timestamp: Date.now(),
       status: "ringing",
-      callerRecordId,
-      receiverRecordId
+      callerRecordId: null,
+      receiverRecordId: null,
     });
 
+    // ── IMMEDIATELY signal the receiver — zero DB wait ───────────────────
     const isOnline = !!userSocketMap[to];
     if (isOnline) {
       io.to(to).emit("incoming-call", { from: userId, offer, callType, callerInfo });
     } else {
       socket.emit("call-user-offline");
     }
+
+    // ── Background: persist call history (does NOT block signaling) ──────
+    persistAsync(async () => {
+      const [savedCaller, savedReceiver] = await Promise.all([
+        new Call({ userId, peerId: to, type: "outgoing", status: "missed", callType }).save(),
+        new Call({ userId: to, peerId: userId, type: "incoming", status: "missed", callType }).save(),
+      ]);
+      // Patch the session with DB IDs once available
+      const session = activeCalls.get(userId);
+      if (session) {
+        session.callerRecordId = savedCaller._id;
+        session.receiverRecordId = savedReceiver._id;
+      }
+      io.to(userId).emit("callHistoryUpdated");
+      io.to(to).emit("callHistoryUpdated");
+    }, "call-user persist");
   });
 
-  socket.on("call-accepted", async ({ to, answer }) => {
+  socket.on("call-accepted", ({ to, answer }) => {
+    if (!isValidObjectId(to)) return;
+    if (!answer || typeof answer !== "object") return;
+
+    // ── IMMEDIATELY forward the SDP answer — zero DB wait ───────────────
+    io.to(to).emit("call-accepted-by-peer", { answer });
+
+    // ── Update in-memory session ─────────────────────────────────────────
     const session = activeCalls.get(to);
     if (session) {
       session.status = "active";
       session.answeredAt = Date.now();
-      if (session.callerRecordId && session.receiverRecordId) {
-        try {
-          await Call.updateMany(
-            { _id: { $in: [session.callerRecordId, session.receiverRecordId] } },
-            { $set: { status: "answered" } }
-          );
-          io.to(userId).emit("callHistoryUpdated");
-          io.to(to).emit("callHistoryUpdated");
-        } catch (err) {
-          console.error("[Socket] Failed to update call status to answered:", err);
-        }
-      }
     }
-    io.to(to).emit("call-accepted-by-peer", { answer });
+
+    // ── Background: update call history status ───────────────────────────
+    if (session?.callerRecordId && session?.receiverRecordId) {
+      persistAsync(async () => {
+        await Call.updateMany(
+          { _id: { $in: [session.callerRecordId, session.receiverRecordId] } },
+          { $set: { status: "answered" } }
+        );
+        io.to(userId).emit("callHistoryUpdated");
+        io.to(to).emit("callHistoryUpdated");
+      }, "call-accepted persist");
+    }
   });
 
+  // ICE candidates are ultra-latency-sensitive — minimal validation only.
+  // We validate 'to' is a real user ID, but NEVER block the candidate itself.
   socket.on("ice-candidate", ({ to, candidate }) => {
+    if (!isValidObjectId(to)) {
+      console.warn("[Socket:Security] ice-candidate: invalid 'to'", { to, from: userId });
+      return;
+    }
+    // Relay candidate exactly as received — do NOT modify ICE payload
     io.to(to).emit("ice-candidate", { candidate });
   });
 
   socket.on("call-ringing", ({ to }) => {
+    if (!isValidObjectId(to)) return;
     io.to(to).emit("call-ringing");
   });
 
-  socket.on("call-rejected", async ({ to }) => {
+  socket.on("call-rejected", ({ to }) => {
+    if (!isValidObjectId(to)) return;
+
+    // ── IMMEDIATELY notify caller ────────────────────────────────────────
+    io.to(to).emit("call-rejected");
+
     const session = activeCalls.get(to);
-    if (session && session.callerRecordId && session.receiverRecordId) {
-      try {
+    activeCalls.delete(to);
+
+    // ── Background: update call history ─────────────────────────────────
+    if (session?.callerRecordId && session?.receiverRecordId) {
+      persistAsync(async () => {
         await Call.updateMany(
           { _id: { $in: [session.callerRecordId, session.receiverRecordId] } },
           { $set: { status: "rejected" } }
         );
         io.to(userId).emit("callHistoryUpdated");
         io.to(to).emit("callHistoryUpdated");
-      } catch (err) {
-        console.error("[Socket] Failed to update call status to rejected:", err);
-      }
+      }, "call-rejected persist");
     }
-    activeCalls.delete(to); // to is callerId
-    io.to(to).emit("call-rejected");
   });
 
-  const handleEndCallCleanup = async (callerId) => {
+  // ─── Background call cleanup (non-blocking) ───────────────────────────
+  // Returns immediately; DB writes happen in background.
+  const handleEndCallCleanup = (callerId) => {
     const session = activeCalls.get(callerId);
     if (!session) return;
 
-    if (session.status === "active" && session.answeredAt) {
+    activeCalls.delete(callerId); // Synchronous — instant
+
+    if (session.status === "active" && session.answeredAt
+      && session.callerRecordId && session.receiverRecordId) {
       const duration = Math.floor((Date.now() - session.answeredAt) / 1000);
-      if (session.callerRecordId && session.receiverRecordId) {
-        try {
-          await Call.updateMany(
-            { _id: { $in: [session.callerRecordId, session.receiverRecordId] } },
-            { $set: { duration } }
-          );
-          // Notify both users to refresh history
-          io.to(callerId).emit("callHistoryUpdated");
-          io.to(session.to).emit("callHistoryUpdated");
-        } catch (err) {
-          console.error("[Socket] Failed to update call duration:", err);
-        }
-      }
+      persistAsync(async () => {
+        await Call.updateMany(
+          { _id: { $in: [session.callerRecordId, session.receiverRecordId] } },
+          { $set: { duration } }
+        );
+        io.to(callerId).emit("callHistoryUpdated");
+        io.to(session.to).emit("callHistoryUpdated");
+      }, "end-call duration persist");
     }
-    activeCalls.delete(callerId);
   };
 
-  socket.on("end-call", async ({ to }) => {
-    await handleEndCallCleanup(userId); // I was the caller
-    await handleEndCallCleanup(to); // Or I was the receiver (callerId = to)
+  socket.on("end-call", ({ to }) => {
+    if (!isValidObjectId(to)) return;
+    // ── IMMEDIATELY signal end — cleanup is sync/background ─────────────
     io.to(to).emit("call-ended");
+    handleEndCallCleanup(userId); // synchronous delete + async DB
+    handleEndCallCleanup(to);
   });
 
-  socket.on("call:end", async ({ to, reason }) => {
-    await handleEndCallCleanup(userId);
-    await handleEndCallCleanup(to);
+  socket.on("call:end", ({ to, reason }) => {
+    if (!isValidObjectId(to)) return;
     io.to(to).emit("call:ended", { reason });
+    handleEndCallCleanup(userId);
+    handleEndCallCleanup(to);
   });
 
-  socket.on("call-timeout", async ({ to }) => {
-    await handleEndCallCleanup(userId);
+  socket.on("call-timeout", ({ to }) => {
+    if (!isValidObjectId(to)) return;
     io.to(to).emit("call-timeout");
+    handleEndCallCleanup(userId);
   });
 
-  // ─── WebRTC Call Reactions ────────────────────────────────────────────────
-  socket.on("call:handRaise", ({ callId, userId: senderId, raised }) => {
-    io.to(callId).emit("call:handRaise", { userId: senderId, raised });
+  // ─── WebRTC Call Reactions ─────────────────────────────────────────────
+  socket.on("call:handRaise", ({ callId, raised }) => {
+    if (!isValidCallId(callId)) return;
+    io.to(callId).emit("call:handRaise", { userId, raised: !!raised });
   });
 
-  socket.on("call:emoji", ({ callId, userId: senderId, emoji }) => {
-    io.to(callId).emit("call:emoji", { userId: senderId, emoji });
+  socket.on("call:emoji", ({ callId, emoji }) => {
+    if (!isValidCallId(callId)) return;
+    if (!emoji || typeof emoji !== "string" || emoji.length > MAX_EMOJI_LENGTH) return;
+    io.to(callId).emit("call:emoji", { userId, emoji });
   });
 
   socket.on("call:deviceInfo", ({ callId, device }) => {
+    if (!isValidCallId(callId)) return;
     io.to(callId).emit("call:deviceInfo", { device });
   });
 
   socket.on("call:mediaStatus", ({ callId, isMuted, isCameraOff }) => {
-    io.to(callId).emit("call:mediaStatus", { isMuted, isCameraOff });
+    if (!isValidCallId(callId)) return;
+    io.to(callId).emit("call:mediaStatus", { isMuted: !!isMuted, isCameraOff: !!isCameraOff });
   });
 
-  // ─── WebRTC Renegotiation (Dynamic Track Additions) ───────────────────────
+  // ─── WebRTC Renegotiation ──────────────────────────────────────────────
   socket.on("call:renegotiate", ({ callId, offer }) => {
+    if (!isValidCallId(callId)) return;
+    if (!offer || typeof offer !== "object") return;
     io.to(callId).emit("call:renegotiate", { offer });
   });
 
   socket.on("call:renegotiate:answer", ({ callId, answer }) => {
+    if (!isValidCallId(callId)) return;
+    if (!answer || typeof answer !== "object") return;
     io.to(callId).emit("call:renegotiate:answer", { answer });
   });
 
-  // ─── Group Call (Mesh Topology) ───────────────────────────────────────────
-  socket.on("call:addParticipants", ({ callId, from, users }) => {
-    users.forEach(user => {
+  // ─── Group Call (Mesh Topology) ────────────────────────────────────────
+  socket.on("call:addParticipants", ({ callId, users }) => {
+    if (!isValidCallId(callId)) return;
+    if (!Array.isArray(users)) return;
+    users.forEach((user) => {
       const targetId = user._id || user.id || user;
-      io.to(targetId).emit("call:incomingGroup", { callId, from });
+      if (!isValidObjectId(String(targetId))) return;
+      io.to(String(targetId)).emit("call:incomingGroup", { callId, from: userId });
     });
   });
 
-  socket.on("call:group:offer", ({ to, from, offer }) => {
-    io.to(to).emit("call:group:offer", { from, offer });
+  socket.on("call:group:offer", ({ to, offer }) => {
+    if (!isValidObjectId(to)) return;
+    if (!offer || typeof offer !== "object") return;
+    io.to(to).emit("call:group:offer", { from: userId, offer });
   });
 
-  socket.on("call:group:answer", ({ to, from, answer }) => {
-    io.to(to).emit("call:group:answer", { from, answer });
+  socket.on("call:group:answer", ({ to, answer }) => {
+    if (!isValidObjectId(to)) return;
+    if (!answer || typeof answer !== "object") return;
+    io.to(to).emit("call:group:answer", { from: userId, answer });
   });
-
 
   socket.on("call:watchPartyToggle", ({ callId, enabled }) => {
-    io.to(callId).emit("call:watchPartyToggle", { enabled });
+    if (!isValidCallId(callId)) return;
+    io.to(callId).emit("call:watchPartyToggle", { enabled: !!enabled });
   });
 
-  socket.on("call:group:ice", ({ to, from, candidate }) => {
-    io.to(to).emit("call:group:ice", { from, candidate });
+  socket.on("call:group:ice", ({ to, candidate }) => {
+    if (!isValidObjectId(to)) return;
+    // Relay group ICE candidate without modification
+    io.to(to).emit("call:group:ice", { from: userId, candidate });
   });
 
+  // ─── vBrowser (Watch Party) ────────────────────────────────────────────
   socket.on("vbrowser:navigate", ({ callId, url }) => {
+    if (!isValidCallId(callId)) return;
+    if (typeof url !== "string" || url.length > 2048) return;
+    if (!/^https?:\/\//.test(url)) return;
     io.to(callId).emit("vbrowser:navigate", { url });
   });
 
-  socket.on("vbrowser:start", ({ callId }) => {
-    io.to(callId).emit("vbrowser:start");
-  });
-
-  socket.on("vbrowser:stop", ({ callId }) => {
-    io.to(callId).emit("vbrowser:stop");
-  });
-
-  socket.on("vbrowser:controller", ({ callId, controller }) => {
-    io.to(callId).emit("vbrowser:controller", { controller });
-  });
-
-  socket.on("screen:start", ({ callId }) => {
-    io.to(callId).emit("screen:start");
-  });
-
-  socket.on("screen:stop", ({ callId }) => {
-    io.to(callId).emit("screen:stop");
-  });
+  socket.on("vbrowser:start",      ({ callId }) => { if (isValidCallId(callId)) io.to(callId).emit("vbrowser:start"); });
+  socket.on("vbrowser:stop",       ({ callId }) => { if (isValidCallId(callId)) io.to(callId).emit("vbrowser:stop"); });
+  socket.on("vbrowser:controller", ({ callId, controller }) => { if (isValidCallId(callId)) io.to(callId).emit("vbrowser:controller", { controller }); });
+  socket.on("screen:start",        ({ callId }) => { if (isValidCallId(callId)) io.to(callId).emit("screen:start"); });
+  socket.on("screen:stop",         ({ callId }) => { if (isValidCallId(callId)) io.to(callId).emit("screen:stop"); });
 
   socket.on("screen:offer", ({ to, offer }) => {
+    if (!isValidObjectId(to)) return;
+    if (!offer || typeof offer !== "object") return;
     io.to(to).emit("screen:offer", { from: userId, offer });
   });
 
   socket.on("screen:answer", ({ to, answer }) => {
+    if (!isValidObjectId(to)) return;
+    if (!answer || typeof answer !== "object") return;
     io.to(to).emit("screen:answer", { from: userId, answer });
   });
 
   socket.on("screen:ice", ({ to, candidate }) => {
+    if (!isValidObjectId(to)) return;
     io.to(to).emit("screen:ice", { from: userId, candidate });
   });
 
-  // ─── Watch Party Events ──────────────────────────────────────────────────
-  socket.on("wp:start", ({ callId, url, actionId, userId: senderId }) => {
-    console.log("[Socket] wp:start", { callId, url, actionId });
-    io.to(callId).emit("wp:start", { url, actionId, userId: senderId });
+  // ─── Watch Party Events ────────────────────────────────────────────────
+  socket.on("wp:start", ({ callId, url, actionId }) => {
+    if (!isValidCallId(callId)) return;
+    if (typeof url !== "string" || url.length > 2048) return;
+    if (!/^https?:\/\//.test(url)) return;
+    io.to(callId).emit("wp:start", { url, actionId, userId });
   });
 
   socket.on("wp:action", (data) => {
-    // data: { callId, type, time, actionId, userId }
-    io.to(data.callId).emit("wp:action", data);
+    const { callId, type, time, actionId } = data;
+    if (!isValidCallId(callId)) return;
+    if (typeof time !== "number") return;
+    io.to(callId).emit("wp:action", { callId, type, time, actionId, userId });
   });
 
   socket.on("wp:heartbeat", (data) => {
-    // data: { callId, time, playing, userId }
-    io.to(data.callId).emit("wp:heartbeat", data);
+    const { callId, time, playing } = data;
+    if (!isValidCallId(callId)) return;
+    if (typeof time !== "number") return;
+    io.to(callId).emit("wp:heartbeat", { callId, time, playing: !!playing, userId });
   });
 
   socket.on("wp:stop", ({ callId }) => {
-    console.log("[Socket] wp:stop", { callId });
-    io.to(callId).emit("wp:stop");
+    if (isValidCallId(callId)) io.to(callId).emit("wp:stop");
   });
 
-  // ─── Call heartbeat (keep-alive ping/pong) ────────────────────────────────
+  // ─── Call heartbeat ────────────────────────────────────────────────────
   socket.on("call:ping", ({ to }) => {
+    if (!isValidObjectId(to)) return;
     io.to(to).emit("call:pong");
     socket.emit("call:pong");
   });
 
-  // ─── QR Linked Device ─────────────────────────────────────────────────────
+  // ─── QR Linked Device ──────────────────────────────────────────────────
   socket.on("qr:join", ({ sessionId }) => {
-    if (sessionId) {
-      socket.join(`qr:${sessionId}`);
-      console.log(`Socket ${socket.id} joined QR room qr:${sessionId}`);
-    }
+    if (typeof sessionId !== "string") return;
+    if (sessionId.length === 0 || sessionId.length > 100) return;
+    if (!/^[a-zA-Z0-9_-]+$/.test(sessionId)) return;
+    socket.join(`qr:${sessionId}`);
   });
 
-  // ─── Re-register after popup call ends ────────────────────────────────────
-  // When the call popup disconnects, userSocketMap[userId] is deleted.
-  // The main window socket is still alive but unregistered.
-  // It emits "re-register" so the server maps it back and user stays "online".
+  // ─── Re-register after popup call ends ────────────────────────────────
+  // When the call popup closes, the main window re-registers so the user
+  // stays "online". userId is the server-verified value — always safe.
   socket.on("re-register", () => {
-    if (userId) {
-      userSocketMap[userId] = socket.id;
-      io.emit("getOnlineUsers", Object.keys(userSocketMap));
-      console.log(`[Socket] Re-registered ${userId} → ${socket.id}`);
-    }
+    userSocketMap[userId] = socket.id;
+    io.emit("getOnlineUsers", Object.keys(userSocketMap));
+    console.log(`[Socket] Re-registered ${userId} → ${socket.id}`);
   });
 
-  // ─── Disconnect ───────────────────────────────────────────────────────────
+  // ─── Disconnect ────────────────────────────────────────────────────────
   socket.on("disconnect", () => {
-    console.log("A user disconnected", socket.id);
+    console.log("[Socket] disconnected", socket.id, "uid:", userId);
 
-    // If the disconnecting socket belongs to a caller who is currently ringing a peer, terminate it natively
+    // If this user was in an active call as caller, notify the peer immediately
     if (activeCalls.has(userId)) {
-      const activeSession = activeCalls.get(userId);
+      const session = activeCalls.get(userId);
       activeCalls.delete(userId);
-      io.to(activeSession.to).emit("call:ended", { reason: "caller_disconnected" });
-      io.to(activeSession.to).emit("call-ended"); // Backup for backward compat
+      io.to(session.to).emit("call:ended", { reason: "caller_disconnected" });
+      io.to(session.to).emit("call-ended"); // backward-compat alias
     }
 
-    // Critical: only remove from map if THIS socket is still the registered one.
-    // When the call popup opens, it re-registers the same userId with a NEW socket.
-    // The OLD socket then disconnects — we must NOT delete the new socket from the map.
+    // Only remove from online map if THIS socket is still the registered one.
+    // (Call popup opens a new socket with the same userId — don't evict it.)
     if (userSocketMap[userId] === socket.id) {
       delete userSocketMap[userId];
       io.emit("getOnlineUsers", Object.keys(userSocketMap));

@@ -27,6 +27,7 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
   const [errorMsg, setErrorMsg] = useState("");
 
   const pcRef = useRef(null);
+  const localStreamRef = useRef(null);
   const pendingCandidates = useRef([]);
   const remoteDescSet = useRef(false);
 
@@ -73,6 +74,7 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
         video: callType === "video",
       });
       setLocalStream(stream);
+      localStreamRef.current = stream;
 
       // 2. Create peer connection
       const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -127,6 +129,7 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
   useEffect(() => {
     initialize();
     return () => {
+      localStreamRef.current?.getTracks().forEach((t) => t.stop());
       pcRef.current?.close();
       pcRef.current = null;
       pendingCandidates.current = [];
@@ -154,11 +157,11 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
   }, [localStream]);
 
   const stopAll = useCallback(() => {
-    localStream?.getTracks().forEach((t) => t.stop());
+    localStreamRef.current?.getTracks().forEach((t) => t.stop());
     pcRef.current?.close();
     pcRef.current = null;
     setStatus("ended");
-  }, [localStream]);
+  }, []);
 
   return {
     localStream, remoteStream,

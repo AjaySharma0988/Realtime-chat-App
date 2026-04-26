@@ -1,5 +1,9 @@
-import { Check, CheckCheck, Mic, Video, Phone, Clock, RotateCw, Ban } from "lucide-react";
+import { Check, CheckCheck, Mic, Video, Phone, Clock, RotateCw, Ban, Smile } from "lucide-react";
+import { useState, useRef } from "react";
 import { formatMessageTime } from "../lib/utils";
+import EmojiReactionPanel from "./EmojiReactionPanel";
+import MessageReactions from "./MessageReactions";
+import { useChatStore } from "../store/useChatStore";
 
 // ── Search highlight ─────────────────────────────────────────────────────────
 const HighlightText = ({ text, query }) => {
@@ -60,10 +64,35 @@ export const MessageBubble = ({
   onImageClick,
   onRetryMessage
 }) => {
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const { reactToMessage } = useChatStore();
+
+  const handleEmojiSelect = (emoji) => {
+    reactToMessage(message._id, emoji);
+  };
+
+  const isOnlyEmoji = (text) => {
+    if (!text) return false;
+    const trimmed = text.trim();
+    try {
+      const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
+      const segments = [...segmenter.segment(trimmed)];
+      if (segments.length !== 1) return false;
+      const char = segments[0].segment;
+      return /\p{Extended_Pictographic}/u.test(char);
+    } catch (e) {
+      return /^(\u00a9|\u00ae|[\u2000-\u3300]|\ud83c[\ud000-\udfff]|\ud83d[\ud000-\udfff]|\ud83e[\ud000-\udfff])$/.test(trimmed);
+    }
+  };
+
+  const isLargeEmoji = !message.image && !message.audio && message.type !== "call" && isOnlyEmoji(message.text);
+
   return (
     <div
-      className={`flex items-start gap-2 px-[4%] py-[2px] transition-colors ${isSent ? "flex-row-reverse" : "flex-row"
-        } ${isSelected ? "bg-primary/10" : isHighlighted ? "bg-base-300/60" : ""}`}
+      className={`group relative flex items-start gap-2 px-[4%] py-[2px] transition-colors ${isSent ? "flex-row-reverse" : "flex-row"
+        } ${isSelected ? "bg-primary/10" : isHighlighted ? "bg-base-300/60" : ""} ${
+          message.reactions?.length > 0 ? "mb-4" : ""
+        }`}
       onClick={(e) => {
         e.stopPropagation();
         if (isSelectMode) onToggleSelect(message._id);
@@ -92,19 +121,20 @@ export const MessageBubble = ({
 
       {/* ── BUBBLE CONTAINER ──────────────────────────── */}
       <div
-        className={`relative flex flex-col max-w-[65%] shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] transition-all ${isCurrentMatch ? "ring-2 ring-primary ring-offset-1" : isMatch ? "ring-1 ring-primary/40" : ""
-          }`}
+        className={`relative flex flex-col max-w-[65%] transition-all ${
+          isLargeEmoji ? "bg-transparent shadow-none" : "shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]"
+        } ${isCurrentMatch ? "ring-2 ring-primary ring-offset-1" : isMatch ? "ring-1 ring-primary/40" : ""}`}
         style={{
-          background: isSent ? "var(--bubble-sent-bg)" : "var(--bubble-received-bg)",
+          background: isLargeEmoji ? "transparent" : (isSent ? "var(--bubble-sent-bg)" : "var(--bubble-received-bg)"),
           color: isSent ? "var(--bubble-sent-text)" : "var(--bubble-received-text)",
           borderTopRightRadius: isSent ? "2px" : "12px",
           borderTopLeftRadius: isSent ? "12px" : "2px",
           borderBottomRightRadius: "12px",
           borderBottomLeftRadius: "12px",
-          padding: "4px 8px"
+          padding: isLargeEmoji ? "0" : "4px 8px"
         }}
       >
-        <ReplyQuote replyTo={message.replyTo} onScrollTo={onScrollToReply} />
+        {!isLargeEmoji && <ReplyQuote replyTo={message.replyTo} onScrollTo={onScrollToReply} />}
 
         {/* IMAGE */}
         {message.image && (
@@ -165,7 +195,7 @@ export const MessageBubble = ({
           </div>
         )}
 
-        {/* TEXT / EDITING */}
+        {/* TEXT / EDITING / LARGE EMOJI */}
         {isEditing ? (
           <div className="flex items-center gap-1.5 min-w-[160px] pb-1 mt-1">
             <input
@@ -185,6 +215,10 @@ export const MessageBubble = ({
             <Ban className="size-[15px]" />
             This message was deleted
           </div>
+        ) : isLargeEmoji ? (
+          <div className="text-[48px] leading-none py-2 pr-12 select-none">
+            {message.text.trim()}
+          </div>
         ) : (
           message.text && (
             <div className="text-[14.2px] pt-[2px] leading-relaxed break-words whitespace-pre-wrap pr-12 pb-3">
@@ -197,7 +231,7 @@ export const MessageBubble = ({
         )}
 
         <div
-          className="absolute bottom-1 right-2 flex items-center justify-end gap-[3px] text-[11px]"
+          className={`${isLargeEmoji ? "relative mt-[-12px] pb-1" : "absolute bottom-1 right-2"} flex items-center justify-end gap-[3px] text-[11px]`}
           style={{ color: "var(--bubble-meta-color, #8696A0)" }}
         >
           <span>{formatMessageTime(message.createdAt)}</span>
@@ -225,6 +259,43 @@ export const MessageBubble = ({
             </div>
           )}
         </div>
+        
+        {/* REACTION PICKER TRIGGER (Visible on hover) */}
+        {!message.isDeletedForEveryone && (
+          <div 
+            className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-20 ${
+              isSent ? "right-full mr-2" : "left-full ml-2"
+            }`}
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowEmojiPicker(!showEmojiPicker);
+              }}
+              className={`p-1.5 rounded-full hover:bg-base-300 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-all ${
+                showEmojiPicker ? "opacity-100 scale-110 text-primary" : ""
+              }`}
+              title="Add reaction"
+            >
+              <Smile className="size-[18px]" />
+            </button>
+
+            <EmojiReactionPanel 
+              isOpen={showEmojiPicker}
+              onClose={() => setShowEmojiPicker(false)}
+              onSelect={handleEmojiSelect}
+              isSent={isSent}
+            />
+          </div>
+        )}
+
+        {/* REACTIONS DISPLAY */}
+        <MessageReactions 
+          reactions={message.reactions} 
+          isSent={isSent}
+          onReact={handleEmojiSelect}
+          onOpenPicker={() => setShowEmojiPicker(true)}
+        />
       </div>
     </div>
   );

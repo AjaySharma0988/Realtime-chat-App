@@ -2,28 +2,39 @@ import { generateToken } from "../lib/utils.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import cloudinary from "../lib/cloudinary.js";
+import Message from "../models/message.model.js";
+
+// ─── Dummy hash — used for constant-time comparison when user doesn't exist ─
+// Prevents timing-based username enumeration attacks.
+const DUMMY_HASH = "$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012345";
 
 export const signup = async (req, res) => {
   const { fullName, email, password, profilePic } = req.body;
   try {
     if (!fullName || !email || !password) {
-      return res.status(400).json({ message: "All fields are required" });
+      return res.status(400).json({ error: "All fields are required" });
     }
 
     if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
     }
 
     const user = await User.findOne({ email });
-
-    if (user) return res.status(400).json({ message: "Email already exists" });
+    if (user) return res.status(400).json({ error: "Email already exists" });
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     let imageUrl = "";
     if (profilePic) {
-      const uploadResponse = await cloudinary.uploader.upload(profilePic);
+      // Basic base64 format check before sending to Cloudinary
+      if (!/^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(profilePic)) {
+        return res.status(400).json({ error: "Invalid image format" });
+      }
+      const uploadResponse = await cloudinary.uploader.upload(profilePic, {
+        folder: "profile-pics",
+        resource_type: "image",
+      });
       imageUrl = uploadResponse.secure_url;
     }
 
@@ -35,7 +46,6 @@ export const signup = async (req, res) => {
     });
 
     if (newUser) {
-      // generate jwt token here
       generateToken(newUser._id, res);
       await newUser.save();
 
@@ -46,39 +56,36 @@ export const signup = async (req, res) => {
         profilePic: newUser.profilePic,
       });
     } else {
-      res.status(400).json({ message: "Invalid user data" });
+      res.status(400).json({ error: "Invalid user data" });
     }
   } catch (error) {
-    console.log("Error in signup controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Error in signup controller", error.message);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
-
-import Message from "../models/message.model.js";
 
 export const login = async (req, res) => {
   const { email, password } = req.body;
   try {
-    const user = await User.findOne({ email });
+    // Explicitly select password since it's excluded by default (select: false)
+    const user = await User.findOne({ email }).select("+password");
 
-    if (!user) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
+    // Timing-safe: always run bcrypt even if user not found (prevents enumeration)
+    const hashToCompare = user ? user.password : DUMMY_HASH;
+    const isPasswordCorrect = await bcrypt.compare(password, hashToCompare);
 
-    const isPasswordCorrect = await bcrypt.compare(password, user.password);
-    if (!isPasswordCorrect) {
-      return res.status(400).json({ message: "Invalid credentials" });
+    if (!user || !isPasswordCorrect) {
+      return res.status(401).json({ error: "Invalid credentials" });
     }
 
     if (user.deletionScheduledAt) {
       const daysDiff = (Date.now() - new Date(user.deletionScheduledAt).getTime()) / (1000 * 60 * 60 * 24);
       if (daysDiff > 15) {
-        // Permanently delete user and all their data
         await Message.deleteMany({
           $or: [{ senderId: user._id }, { receiverId: user._id }],
         });
         await User.findByIdAndDelete(user._id);
-        return res.status(404).json({ message: "Account and all data have been permanently deleted" });
+        return res.status(401).json({ error: "Invalid credentials" });
       }
     }
 
@@ -92,8 +99,8 @@ export const login = async (req, res) => {
       deletionScheduledAt: user.deletionScheduledAt,
     });
   } catch (error) {
-    console.log("Error in login controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Error in login controller", error.message);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -102,8 +109,8 @@ export const logout = (req, res) => {
     res.cookie("jwt", "", { maxAge: 0 });
     res.status(200).json({ message: "Logged out successfully" });
   } catch (error) {
-    console.log("Error in logout controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Error in logout controller", error.message);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -113,10 +120,18 @@ export const updateProfile = async (req, res) => {
     const userId = req.user._id;
 
     if (!profilePic) {
-      return res.status(400).json({ message: "Profile pic is required" });
+      return res.status(400).json({ error: "Profile pic is required" });
     }
 
-    const uploadResponse = await cloudinary.uploader.upload(profilePic);
+    // Enforce valid base64 image before uploading
+    if (!/^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(profilePic)) {
+      return res.status(400).json({ error: "Invalid image format" });
+    }
+
+    const uploadResponse = await cloudinary.uploader.upload(profilePic, {
+      folder: "profile-pics",
+      resource_type: "image",
+    });
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { profilePic: uploadResponse.secure_url },
@@ -125,8 +140,8 @@ export const updateProfile = async (req, res) => {
 
     res.status(200).json(updatedUser);
   } catch (error) {
-    console.log("error in update profile:", error);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("Error in update profile:", error);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -135,14 +150,13 @@ export const checkAuth = (req, res) => {
     if (req.user.deletionScheduledAt) {
       const daysDiff = (Date.now() - new Date(req.user.deletionScheduledAt).getTime()) / (1000 * 60 * 60 * 24);
       if (daysDiff > 15) {
-         // Should have been caught by login or cron, but safety check
-         return res.status(401).json({ message: "Account deleted" });
+        return res.status(401).json({ error: "Unauthorized" });
       }
     }
     res.status(200).json(req.user);
   } catch (error) {
-    console.log("Error in checkAuth controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Error in checkAuth controller", error.message);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -153,8 +167,8 @@ export const deleteAccount = async (req, res) => {
     res.cookie("jwt", "", { maxAge: 0 });
     res.status(200).json({ message: "Account scheduled for deletion. You have 15 days to restore it." });
   } catch (error) {
-    console.log("Error in deleteAccount controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Error in deleteAccount controller", error.message);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
@@ -164,7 +178,7 @@ export const restoreAccount = async (req, res) => {
     await User.findByIdAndUpdate(userId, { deletionScheduledAt: null });
     res.status(200).json({ message: "Account restored successfully" });
   } catch (error) {
-    console.log("Error in restoreAccount controller", error.message);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Error in restoreAccount controller", error.message);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 };

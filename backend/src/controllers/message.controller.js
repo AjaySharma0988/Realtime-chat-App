@@ -96,12 +96,26 @@ export const sendMessage = async (req, res) => {
 
     let imageUrl;
     if (image) {
+      // Validate base64 image: only safe MIME types, max ~8 MB base64
+      if (!/^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(image)) {
+        return res.status(400).json({ error: "Invalid image format" });
+      }
+      if (image.length > 11 * 1024 * 1024) { // ~8 MB in base64 ≈ 11M chars
+        return res.status(413).json({ error: "Image too large (max 8 MB)" });
+      }
       const uploadResponse = await cloudinary.uploader.upload(image);
       imageUrl = uploadResponse.secure_url;
     }
 
     let audioUrl;
     if (audio) {
+      // Validate base64 audio: only safe MIME types, max ~5 MB base64
+      if (!/^data:audio\/(webm|ogg|mpeg|mp4|wav);base64,/.test(audio)) {
+        return res.status(400).json({ error: "Invalid audio format" });
+      }
+      if (audio.length > 7 * 1024 * 1024) { // ~5 MB in base64 ≈ 7M chars
+        return res.status(413).json({ error: "Audio too large (max 5 MB)" });
+      }
       const uploadResponse = await cloudinary.uploader.upload(audio, {
         resource_type: "video",
         folder: "chat-audio",
@@ -165,6 +179,9 @@ export const bulkDeleteMessages = async (req, res) => {
     if (!Array.isArray(messageIds) || messageIds.length === 0) {
       return res.status(400).json({ error: "No message IDs provided" });
     }
+    if (messageIds.length > 200) {
+      return res.status(400).json({ error: "Too many message IDs (max 200)" });
+    }
 
     if (deleteForEveryone) {
       await Message.updateMany(
@@ -202,6 +219,9 @@ export const editMessage = async (req, res) => {
     if (!text || !text.trim()) {
       return res.status(400).json({ error: "Text cannot be empty" });
     }
+    if (text.length > 5000) {
+      return res.status(400).json({ error: "Message too long (max 5000 characters)" });
+    }
 
     const message = await Message.findById(messageId);
     if (!message) return res.status(404).json({ error: "Message not found" });
@@ -233,7 +253,9 @@ export const reactToMessage = async (req, res) => {
     const { emoji } = req.body;
     const myId = req.user._id.toString();
 
-    if (!emoji) return res.status(400).json({ error: "Emoji is required" });
+    if (!emoji || typeof emoji !== "string" || emoji.length === 0 || emoji.length > 10) {
+      return res.status(400).json({ error: "Invalid emoji" });
+    }
 
     const message = await Message.findById(messageId);
     if (!message) return res.status(404).json({ error: "Message not found" });

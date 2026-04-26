@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "../store/useChatStore";
 import { useAuthStore } from "../store/useAuthStore";
 import { useCallStore } from "../store/useCallStore";
+import { useThemeStore } from "../store/useThemeStore";
 import {
   ArrowLeft, MoreVertical, Video, Phone, Paperclip, Smile, Mic, Send,
   Image as ImageIcon, Camera, MapPin, User, FileText, BarChart2, Calendar,
@@ -11,6 +12,8 @@ import {
 import { MessageBubble } from "../components/MessageBubble";
 import MessageSkeleton from "../components/skeletons/MessageSkeleton";
 import MobileDropdownMenu from "../components/mobile/MobileDropdownMenu";
+import EmojiPicker from "../components/EmojiPicker";
+import CameraOverlay from "../components/CameraOverlay";
 import { navigateMobile } from "./MobileLayout";
 import toast from "react-hot-toast";
 
@@ -18,11 +21,15 @@ const MobileChatPage = () => {
   const { messages, getMessages, isMessagesLoading, selectedUser, setSelectedUser, subscribeToMessages, unsubscribeFromMessages, sendMessage } = useChatStore();
   const { authUser, onlineUsers } = useAuthStore();
   const { startCall } = useCallStore();
+  const { chatPattern, customBgImage } = useThemeStore();
   
   const [text, setText] = useState("");
   const [showAttachment, setShowAttachment] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [cameraImage, setCameraImage] = useState(null);
   const fileInputRef = useRef(null);
   const messageEndRef = useRef(null);
   const menuRef = useRef(null);
@@ -54,16 +61,19 @@ const MobileChatPage = () => {
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!text.trim() && !imagePreview) return;
+    const finalImage = cameraImage || imagePreview;
+    if (!text.trim() && !finalImage) return;
     
+    const msg = { text: text.trim(), image: finalImage };
+    
+    setText("");
+    setImagePreview(null);
+    setCameraImage(null);
+    setIsCameraOpen(false);
+    setShowAttachment(false);
+
     try {
-      await sendMessage({
-        text: text.trim(),
-        image: imagePreview,
-      });
-      setText("");
-      setImagePreview(null);
-      setShowAttachment(false);
+      await sendMessage(msg);
     } catch (error) {
       toast.error("Failed to send message");
     }
@@ -143,39 +153,67 @@ const MobileChatPage = () => {
         </div>
       </div>
 
-      {/* Messages */}
+      {/* Main Content Area (Background + Messages + Input) */}
       <div 
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-2"
-        style={{ 
-          backgroundImage: `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")`,
-          backgroundSize: '400px',
-          backgroundRepeat: 'repeat',
-          backgroundColor: 'var(--wa-chat-bg)'
-        }}
+        className="flex-1 flex flex-col relative overflow-hidden bg-base-100"
       >
-        <div className="absolute inset-0 bg-base-100/40 pointer-events-none" />
-        <div className="relative z-10">
-          {isMessagesLoading ? (
-            <MessageSkeleton />
-          ) : (
-            messages.map((message, idx) => {
-               const isSent = message.senderId === authUser._id;
-               return (
-                 <div key={message._id} ref={idx === messages.length - 1 ? messageEndRef : null}>
-                   <MessageBubble 
-                     message={message} 
-                     isSent={isSent} 
-                     selectedUser={selectedUser}
-                   />
-                 </div>
-               );
-            })
-          )}
-        </div>
-      </div>
+        {/* ── Background Layers ── */}
+        {!isCameraOpen && chatPattern === 'custom' && customBgImage && (
+          <div 
+            className="absolute inset-0 z-0 pointer-events-none opacity-[0.4] dark:opacity-[0.2]"
+            style={{ 
+              backgroundImage: `url(${customBgImage})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+            }}
+          />
+        )}
+        {!isCameraOpen && chatPattern !== 'custom' && (
+          <div 
+            className={`absolute inset-0 z-0 pointer-events-none ${chatPattern === 'whatsapp' ? 'opacity-[0.15] dark:invert' : 'opacity-[0.08]'}`}
+            style={{ 
+              backgroundImage: chatPattern === 'whatsapp' 
+                ? `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")` 
+                : `url('/patterns/${chatPattern}.svg')`,
+              backgroundSize: chatPattern === 'whatsapp' ? '400px' : 'auto',
+              backgroundRepeat: 'repeat',
+            }}
+          />
+        )}
+
+        {/* Messages or Camera */}
+        {isCameraOpen ? (
+          <CameraOverlay 
+            onClose={() => { setIsCameraOpen(false); setCameraImage(null); }}
+            cameraImage={cameraImage}
+            onCapture={(img) => setCameraImage(img)}
+            onRetake={() => setCameraImage(null)}
+          />
+        ) : (
+          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 relative z-10">
+            {isMessagesLoading ? (
+              <MessageSkeleton />
+            ) : (
+              messages.map((message, idx) => {
+                 const isSent = message.senderId === authUser._id;
+                 return (
+                   <div key={message._id} ref={idx === messages.length - 1 ? messageEndRef : null}>
+                     <MessageBubble 
+                       message={message} 
+                       isSent={isSent} 
+                       selectedUser={selectedUser}
+                     />
+                   </div>
+                 );
+              })
+            )}
+          </div>
+        )}
 
       {/* Input Section */}
-      <div className="p-2 bg-transparent flex flex-col gap-2 relative z-20">
+      {(!isCameraOpen || cameraImage) && (
+        <div className={`p-2 flex flex-col gap-2 relative z-20 transition-colors ${isCameraOpen && cameraImage ? 'bg-[#0B141A]' : 'bg-transparent'}`}>
         {imagePreview && (
           <div className="p-4 bg-base-300 rounded-2xl border border-base-content/10 animate-in slide-in-from-bottom-2">
             <div className="relative inline-block">
@@ -188,10 +226,22 @@ const MobileChatPage = () => {
         )}
 
         <form onSubmit={handleSendMessage} className="flex items-end gap-2">
-          <div className="flex-1 bg-base-300 rounded-[24px] flex items-center px-2 py-1 min-h-[48px] border border-base-content/10">
-            <button type="button" className="p-2 text-base-content/50">
+          <div className="flex-1 bg-base-300 rounded-[24px] flex items-center px-2 py-1 min-h-[48px] border border-base-content/10 relative">
+            <button 
+              type="button" 
+              className={`p-2 transition-colors ${showEmoji ? "text-primary" : "text-base-content/50"}`}
+              onClick={() => {
+                setShowEmoji(!showEmoji);
+                setShowAttachment(false);
+              }}
+            >
               <Smile className="size-6" />
             </button>
+            <EmojiPicker 
+              isOpen={showEmoji} 
+              onClose={() => setShowEmoji(false)} 
+              onSelect={(emoji) => setText(prev => prev + emoji)} 
+            />
             <input 
               placeholder="Message"
               value={text}
@@ -201,23 +251,25 @@ const MobileChatPage = () => {
             <button type="button" onClick={() => setShowAttachment(!showAttachment)} className="p-2 text-base-content/50 transition-transform active:scale-90">
               <Paperclip className={`size-6 ${showAttachment ? "text-primary rotate-45" : ""}`} />
             </button>
-            {!text.trim() && !imagePreview && (
-              <button type="button" onClick={() => fileInputRef.current?.click()} className="p-2 text-base-content/50">
+            {!text.trim() && !imagePreview && !cameraImage && (
+              <button type="button" onClick={() => setIsCameraOpen(true)} className="p-2 text-base-content/50">
                 <Camera className="size-6" />
               </button>
             )}
           </div>
           <button 
             type="submit" 
-            className={`size-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg transition-all active:scale-90 ${text.trim() || imagePreview ? 'bg-primary' : 'bg-[#00a884]'}`}
+            className={`size-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg transition-all active:scale-90 ${text.trim() || imagePreview || cameraImage ? 'bg-primary' : 'bg-[#00a884]'}`}
           >
-            {text.trim() || imagePreview ? (
+            {text.trim() || imagePreview || cameraImage ? (
               <Send className="size-6 text-white" />
             ) : (
               <Mic className="size-6 text-white" />
             )}
           </button>
         </form>
+      </div>
+      )}
       </div>
 
       <input type="file" hidden ref={fileInputRef} onChange={handleImageChange} accept="image/*" />
@@ -227,7 +279,7 @@ const MobileChatPage = () => {
         <div className="fixed inset-x-0 bottom-20 mx-4 bg-base-300 rounded-3xl p-6 shadow-2xl border border-base-content/10 animate-in slide-in-from-bottom-10 duration-300 z-[70]">
           <div className="grid grid-cols-4 gap-y-8 gap-x-4">
             <AttachmentItem onClick={() => fileInputRef.current?.click()} icon={ImageIcon} label="Gallery" color="bg-[#bf59cf]" />
-            <AttachmentItem icon={Camera} label="Camera" color="bg-[#ff2e74]" />
+            <AttachmentItem onClick={() => { setIsCameraOpen(true); setShowAttachment(false); }} icon={Camera} label="Camera" color="bg-[#ff2e74]" />
             <AttachmentItem icon={MapPin} label="Location" color="bg-[#1fa855]" />
             <AttachmentItem icon={User} label="Contact" color="bg-[#007bfc]" />
             <AttachmentItem icon={FileText} label="Document" color="bg-[#7f66ff]" />

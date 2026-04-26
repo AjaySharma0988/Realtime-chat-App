@@ -13,38 +13,65 @@ import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import callRoutes from "./routes/call.route.js";
 import { app, server } from "./lib/socket.js";
+import { sanitizeRequest } from "./middleware/sanitize.middleware.js";
 
 const PORT = process.env.PORT || 5001;
 const __dirname = path.resolve();
 
-// ─── Security: HTTP headers ────────────────────────────────────────────────
+// ─── Security: HTTP headers + Content-Security-Policy ─────────────────────
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" }, // allow Cloudinary images
-    contentSecurityPolicy: false, // disable for dev; enable in prod with custom policy
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc:  ["'self'"],
+        scriptSrc:   ["'self'", "'unsafe-inline'"],   // React needs inline scripts in dev
+        styleSrc:    ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc:     ["'self'", "https://fonts.gstatic.com"],
+        imgSrc:      ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
+        mediaSrc:    ["'self'", "blob:", "https://res.cloudinary.com"],
+        connectSrc:  ["'self'", "wss:", "ws:", "https://res.cloudinary.com"],
+        frameSrc:    ["'none'"],
+        objectSrc:   ["'none'"],
+        upgradeInsecureRequests: process.env.NODE_ENV === "production" ? [] : null,
+      },
+    },
   })
 );
 
 // ─── Security: Rate limiting ───────────────────────────────────────────────
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1500,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Too many requests, please try again later." },
+  message: { error: "Too many requests, please try again later." },
 });
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // only 10 login/signup attempts per 15 min
+  windowMs: 60 * 1000, // 1 minute window
+  max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Too many auth attempts, please try again in 15 minutes." },
+  message: { error: "Too many auth attempts, please try again later." },
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Upload limit reached, please try again later." },
 });
 
 app.use(generalLimiter);
-app.use(express.json({ limit: "50mb" }));
+
+// ─── Body parsing: strict 10 MB cap ───────────────────────────────────────
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(cookieParser());
+
+// ─── CORS ─────────────────────────────────────────────────────────────────
 app.use(
   cors({
     origin:
@@ -55,12 +82,25 @@ app.use(
   })
 );
 
+// ─── Security: NoSQL injection sanitizer (global) ─────────────────────────
+app.use(sanitizeRequest);
+
 // ─── Routes ────────────────────────────────────────────────────────────────
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/signup", authLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/calls", callRoutes);
+
+// Video upload has its own tighter rate limit
+app.use("/api/messages/upload-video", uploadLimiter);
+
+// ─── Global error handler — never leak stack traces ───────────────────────
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error("[GlobalError]", err.message);
+  res.status(500).json({ error: "Internal Server Error" });
+});
 
 // ─── Production: serve built frontend ─────────────────────────────────────
 if (process.env.NODE_ENV === "production") {
