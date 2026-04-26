@@ -174,7 +174,7 @@ const MobileChatPage = () => {
             className={`absolute inset-0 z-0 pointer-events-none ${chatPattern === 'whatsapp' ? 'opacity-[0.15] dark:invert' : 'opacity-[0.08]'}`}
             style={{ 
               backgroundImage: chatPattern === 'whatsapp' 
-                ? `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")` 
+                ? `url("/patterns/whatsapp.png")` 
                 : `url('/patterns/${chatPattern}.svg')`,
               backgroundSize: chatPattern === 'whatsapp' ? '400px' : 'auto',
               backgroundRepeat: 'repeat',

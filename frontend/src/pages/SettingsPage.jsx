@@ -257,7 +257,7 @@ const SectionContent = ({ section, theme, setTheme, chatPattern, setChatPattern,
                       className="absolute inset-0 opacity-[0.2]" 
                       style={{ 
                         backgroundImage: pattern === 'whatsapp' 
-                          ? `url("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png")` 
+                          ? `url("/patterns/whatsapp.png")` 
                           : `url('/patterns/${pattern}.svg')`, 
                         backgroundSize: pattern === 'whatsapp' ? '200px' : 'auto',
                         backgroundRepeat: 'repeat'
