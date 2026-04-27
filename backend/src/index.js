@@ -12,8 +12,10 @@ import { connectDB } from "./lib/db.js";
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import callRoutes from "./routes/call.route.js";
+import statusRoutes from "./routes/status.routes.js";
 import { app, server } from "./lib/socket.js";
 import { sanitizeRequest } from "./middleware/sanitize.middleware.js";
+import { initStatusPruner } from "./lib/statusPruner.js";
 
 const PORT = process.env.PORT || 5001;
 const __dirname = path.resolve();
@@ -66,9 +68,9 @@ const uploadLimiter = rateLimit({
 
 app.use(generalLimiter);
 
-// ─── Body parsing: strict 10 MB cap ───────────────────────────────────────
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ limit: "10mb", extended: true }));
+// ─── Body parsing: 50 MB cap for media uploads ───────────────────────────
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cookieParser());
 
 // ─── CORS ─────────────────────────────────────────────────────────────────
@@ -91,6 +93,7 @@ app.use("/api/auth/signup", authLimiter);
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/calls", callRoutes);
+app.use("/api/status", statusRoutes);
 
 // Video upload has its own tighter rate limit
 app.use("/api/messages/upload-video", uploadLimiter);
@@ -113,6 +116,7 @@ if (process.env.NODE_ENV === "production") {
 // ─── Start ─────────────────────────────────────────────────────────────────
 const startServer = async () => {
   await connectDB();
+  initStatusPruner();
   server.listen(PORT, () => {
     console.log("Server is running on PORT: " + PORT);
   });

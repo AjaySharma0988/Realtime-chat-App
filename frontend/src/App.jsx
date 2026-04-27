@@ -12,22 +12,25 @@ import CallModal from "./components/CallModal";
 import TopBar from "./components/TopBar";
 import LeftNavPanel from "./components/LeftNavPanel";
 import MobileLayout from "./mobile/MobileLayout";
+import StatusViewer from "./components/StatusViewer";
 
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuthStore } from "./store/useAuthStore";
 import { useThemeStore } from "./store/useThemeStore";
 import { useCallStore } from "./store/useCallStore";
 import { useAppStore } from "./store/useAppStore";
+import { useStatusStore } from "./store/useStatusStore";
 import { useEffect } from "react";
 
 import { Loader, RefreshCw, LifeBuoy, AlertCircle, LogOut } from "lucide-react";
 import { Toaster } from "react-hot-toast";
 
 const App = () => {
-  const { authUser, checkAuth, isCheckingAuth, restoreAccount, logout } = useAuthStore();
+  const { authUser, checkAuth, isCheckingAuth, restoreAccount, logout, socket } = useAuthStore();
   const { theme } = useThemeStore();
   const { incomingCall, outgoingCall, activeCall, initBroadcastListener } = useCallStore();
   const { activeView, setActiveView } = useAppStore();
+  const { fetchStatuses, subscribeToStatuses, unsubscribeFromStatuses, viewingUserId, getUserStatuses, setViewingUserId } = useStatusStore();
   const location = useLocation();
 
   useEffect(() => {
@@ -41,6 +44,14 @@ const App = () => {
   }, [theme]);
 
   useEffect(() => { checkAuth(); }, [checkAuth]);
+
+  useEffect(() => {
+    if (authUser) {
+      fetchStatuses();
+      subscribeToStatuses();
+    }
+    return () => unsubscribeFromStatuses();
+  }, [authUser, fetchStatuses, subscribeToStatuses, unsubscribeFromStatuses]);
 
   useEffect(() => {
     const disableContextMenu = (e) => {
@@ -114,6 +125,16 @@ const App = () => {
 
       <Toaster />
       {(incomingCall || outgoingCall || activeCall) && <CallModal />}
+
+      {/* Global Status Viewer */}
+      {viewingUserId && (
+        <StatusViewer 
+          statuses={getUserStatuses(viewingUserId)} 
+          onClose={() => setViewingUserId(null)} 
+          onDeleted={(id) => useStatusStore.getState().removeStatus(id)}
+        />
+      )}
+
 
       {/* Account Restoration Page Overlay */}
       {authUser?.deletionScheduledAt && (

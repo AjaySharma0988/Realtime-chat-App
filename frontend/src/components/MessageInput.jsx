@@ -50,7 +50,17 @@ const AttachmentItem = ({ icon: Icon, label, onClick, color }) => (
   </button>
 );
 
-const MessageInput = ({ replyToMsg, onCancelReply, onOpenCamera, injectedImage, onSendComplete, isOverlayMode }) => {
+const MessageInput = ({ 
+  replyToMsg, 
+  onCancelReply, 
+  onOpenCamera, 
+  injectedImage, 
+  onSendComplete, 
+  isOverlayMode, 
+  onSend,
+  hideAttachment = false,
+  isTransparent = false
+}) => {
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(injectedImage || null);
 
@@ -112,6 +122,15 @@ const MessageInput = ({ replyToMsg, onCancelReply, onOpenCamera, injectedImage, 
     e.preventDefault();
     if (!text.trim() && !imagePreview) return;
     
+    // Hijack send if onSend is provided (for Status replies)
+    if (onSend) {
+      onSend({ text: text.trim(), image: imagePreview });
+      setText("");
+      setImagePreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
     const messagePayload = {
       text:    text.trim(),
       image:   imagePreview,
@@ -211,7 +230,7 @@ const MessageInput = ({ replyToMsg, onCancelReply, onOpenCamera, injectedImage, 
   }
 
   return (
-    <div className={`px-4 pb-4 pt-3 ${isOverlayMode ? 'bg-[#0B141A]' : 'bg-transparent'} flex-shrink-0 relative z-20 transition-colors duration-200`}>
+    <div className={`px-4 pb-4 pt-3 ${isTransparent ? 'bg-transparent' : (isOverlayMode ? 'bg-[#0B141A]' : 'bg-transparent')} flex-shrink-0 relative z-20 transition-colors duration-200`}>
       {replyToMsg && <ReplyStrip message={replyToMsg} onCancel={onCancelReply} />}
 
       {imagePreview && !isOverlayMode && (
@@ -226,7 +245,7 @@ const MessageInput = ({ replyToMsg, onCancelReply, onOpenCamera, injectedImage, 
       )}
 
       <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-        <div className="flex-1 bg-[#202C33] rounded-full flex items-center px-3 py-1.5 min-h-[52px] relative border border-white/5">
+        <div className={`flex-1 ${isTransparent ? 'bg-black/30 backdrop-blur-md' : 'bg-[#202C33]'} rounded-full flex items-center px-3 py-1.5 min-h-[52px] relative border border-white/5`}>
           {/* ATTACHMENT POPUP */}
           {showAttachMenu && (
             <div className="absolute bottom-full mb-4 left-0 bg-[#233138] rounded-2xl shadow-2xl overflow-hidden w-64 z-50 border border-white/10 animate-in slide-in-from-bottom-4">
@@ -278,18 +297,20 @@ const MessageInput = ({ replyToMsg, onCancelReply, onOpenCamera, injectedImage, 
           />
 
           {/* ATTACHMENT / PLUS BUTTON */}
-          <button 
-            type="button" 
-            onClick={() => {
-              setShowAttachMenu((v) => !v);
-              setShowEmojiPicker(false);
-            }} 
-            className={`p-2 transition-all active:scale-90 ${showAttachMenu ? "text-primary rotate-45" : "text-zinc-400 hover:text-zinc-200"}`}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="size-6">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </button>
+          {!hideAttachment && (
+            <button 
+              type="button" 
+              onClick={() => {
+                setShowAttachMenu((v) => !v);
+                setShowEmojiPicker(false);
+              }} 
+              className={`p-2 transition-all active:scale-90 ${showAttachMenu ? "text-primary rotate-45" : "text-zinc-400 hover:text-zinc-200"}`}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="size-6">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+            </button>
+          )}
 
           {/* EMOJI BUTTON */}
           <button 

@@ -72,6 +72,14 @@ export const useChatStore = create((set, get) => ({
     set({ isSendingMessage: true });
 
     const { selectedUser } = get();
+    // Support status replies where receiverId might be explicitly provided
+    const targetUserId = messageData.receiverId || selectedUser?._id;
+    
+    if (!targetUserId) {
+      set({ isSendingMessage: false });
+      return;
+    }
+
     const me = useAuthStore.getState().authUser;
 
     // Create optimistic message mapping
@@ -79,37 +87,43 @@ export const useChatStore = create((set, get) => ({
     const optimisticMsg = {
       _id: tempId,
       senderId: me._id,
-      receiverId: selectedUser._id,
+      receiverId: targetUserId,
       text: messageData.text,
       image: messageData.image,
+      type: messageData.type || "text",
+      statusRef: messageData.statusRef || null,
       createdAt: new Date().toISOString(),
       status: "pending",
     };
 
-    set((state) => ({ messages: [...state.messages, optimisticMsg] }));
+    // Only append to the current message list if we are actually chatting with that person
+    if (selectedUser?._id === targetUserId) {
+      set((state) => ({ messages: [...state.messages, optimisticMsg] }));
+    }
 
     try {
-      const res = await axiosInstance.post(`/messages/send/${selectedUser._id}`, messageData);
+      const res = await axiosInstance.post(`/messages/send/${targetUserId}`, messageData);
       const newMessage = res.data;
 
       idb.saveMessage(newMessage, me._id);
 
       set((state) => {
-        const socketAlreadyAdded = state.messages.some(m => m._id === newMessage._id);
-        let newMessages;
+        const isCurrentTarget = state.selectedUser?._id === targetUserId;
+        const socketAlreadyAdded = isCurrentTarget && state.messages.some(m => m._id === newMessage._id);
+        let newMessages = state.messages;
         
-        if (socketAlreadyAdded) {
-          // Socket beat the HTTP response: just remove the temp message
-          newMessages = state.messages.filter(m => m._id !== tempId);
-        } else {
-          // Normal flow: replace temp message with the confirmed real message
-          newMessages = state.messages.map(m => m._id === tempId ? newMessage : m);
+        if (isCurrentTarget) {
+          if (socketAlreadyAdded) {
+            newMessages = state.messages.filter(m => m._id !== tempId);
+          } else {
+            newMessages = state.messages.map(m => m._id === tempId ? newMessage : m);
+          }
         }
 
         return {
           messages: newMessages,
           users: state.users.map(u =>
-            u._id === selectedUser._id ? { ...u, lastMessage: newMessage } : u
+            u._id === targetUserId ? { ...u, lastMessage: newMessage } : u
           ).sort((a, b) => {
             const aTime = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
             const bTime = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;

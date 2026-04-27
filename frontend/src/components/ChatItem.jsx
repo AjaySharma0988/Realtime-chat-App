@@ -1,7 +1,9 @@
 import { useChatStore } from "../store/useChatStore";
 import { useAuthStore } from "../store/useAuthStore";
+import { useStatusStore } from "../store/useStatusStore";
 import { Check, CheckCheck, FileText, Image, Mic, Phone } from "lucide-react";
 import { useState, useEffect } from "react";
+import StatusAvatar from "./StatusAvatar";
 
 const MenuItem = ({ label, danger }) => (
   <div
@@ -37,6 +39,7 @@ export const formatChatTime = (dateString) => {
 const ChatItem = ({ user, isSelected }) => {
   const { setSelectedUser } = useChatStore();
   const { onlineUsers, authUser } = useAuthStore();
+  const { getStatusCount, setViewingUserId } = useStatusStore();
   
   const [menu, setMenu] = useState({ visible: false, x: 0, y: 0, chat: null });
 
@@ -67,6 +70,7 @@ const ChatItem = ({ user, isSelected }) => {
   };
 
   const isOnline = onlineUsers.includes(user._id);
+  const statusCount = getStatusCount(user._id);
 
   // Determine last message preview
   const lastMsg = user.lastMessage;
@@ -96,20 +100,16 @@ const ChatItem = ({ user, isSelected }) => {
       <button
         onContextMenu={(e) => handleRightClick(e, user)}
         onClick={() => setSelectedUser(user)}
-        className={`w-full flex items-center gap-3 px-3 py-3 transition-colors select-none text-left
+        className={`w-full flex items-center gap-4 px-3 py-3 transition-colors select-none text-left
           ${isSelected ? "bg-base-300" : "hover:bg-base-200"}`}
       >
-      {/* Avatar */}
-      <div className="relative flex-shrink-0">
-        <img
-          src={user.profilePic || "/avatar.png"}
-          alt={user.fullName}
-          className="size-12 rounded-full object-cover"
-        />
-        {isOnline && (
-          <span className="absolute bottom-0 right-0 size-3 rounded-full bg-success border-2 border-base-100" />
-        )}
-      </div>
+      {/* Avatar with Status Ring */}
+      <StatusAvatar 
+        user={user} 
+        statusCount={statusCount} 
+        onClick={(uid) => setViewingUserId(uid)}
+      />
+
 
       {/* Details */}
       <div className="flex flex-col flex-1 min-w-0 border-b border-base-300/[0.4] pb-2 pr-1 pt-1 h-full">

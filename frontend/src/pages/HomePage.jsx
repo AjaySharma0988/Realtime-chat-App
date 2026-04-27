@@ -11,6 +11,7 @@ import NoChatSelected from "../components/NoChatSelected";
 import ChatContainer from "../components/ChatContainer";
 import CallHistoryDetail from "../components/CallHistoryDetail";
 import { useCallStore } from "../store/useCallStore";
+import StatusPage from "./StatusPage";
 
 const VIEWS = {
   status: { icon: "📊", title: "Status", desc: "View and share status updates with your contacts." },
@@ -33,6 +34,9 @@ const HomePage = () => {
         <Sidebar />
       ) : activeView === "calls" ? (
         <CallsSidebar />
+      ) : activeView === "status" ? (
+        // StatusPage manages its own two-panel layout — render as full-width
+        <StatusPage />
       ) : (
         <SidebarBase>
           <ChatStyleHeader title={currentView.title} />
@@ -52,16 +56,18 @@ const HomePage = () => {
         </SidebarBase>
       )}
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex overflow-hidden">
-        {activeView === "chats" ? (
-          !selectedUser ? <NoChatSelected /> : <ChatContainer />
-        ) : activeView === "calls" ? (
-          <CallHistoryDetail />
-        ) : (
-          <NoChatSelected />
-        )}
-      </div>
+      {/* Main Content Area — hidden when StatusPage handles its own layout */}
+      {activeView !== "status" && (
+        <div className="flex-1 flex overflow-hidden">
+          {activeView === "chats" ? (
+            !selectedUser ? <NoChatSelected /> : <ChatContainer />
+          ) : activeView === "calls" ? (
+            <CallHistoryDetail />
+          ) : (
+            <NoChatSelected />
+          )}
+        </div>
+      )}
     </div>
   );
 };

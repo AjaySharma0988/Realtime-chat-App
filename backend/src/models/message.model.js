@@ -31,11 +31,22 @@ const messageSchema = new mongoose.Schema(
       default: null,     // ← null (not {}) for non-reply messages
       _id: false,        // no nested _id on the sub-document
     },
+    statusRef: {
+      type: {
+        statusId: { type: mongoose.Schema.Types.ObjectId },
+        mediaUrl: { type: String },
+        mediaType: { type: String },
+        caption: { type: String },
+        deleted:  { type: Boolean, default: false },
+      },
+      default: null,
+      _id: false,
+    },
 
     // ── Call log fields (type = "call") ────────────────────────────────────
     type: {
       type: String,
-      enum: ["text", "call"],
+      enum: ["text", "call", "status-reply"],
       default: "text",
     },
     callType:     { type: String, enum: ["audio", "video"] },

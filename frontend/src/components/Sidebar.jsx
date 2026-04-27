@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useChatStore } from "../store/useChatStore";
 import { useAuthStore } from "../store/useAuthStore";
+import { useStatusStore } from "../store/useStatusStore";
 import SidebarSkeleton from "./skeletons/SidebarSkeleton";
 import {
   MessageSquare, Search, MoreVertical, LogOut,
@@ -18,6 +19,7 @@ const FILTERS = ["All", "Unread", "Favorites"];
 const Sidebar = () => {
   const { getUsers, users, selectedUser, setSelectedUser, isUsersLoading, messages } = useChatStore();
   const { onlineUsers, logout, authUser } = useAuthStore();
+  const { fetchStatuses } = useStatusStore();
 
   const [filter, setFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
@@ -25,7 +27,10 @@ const Sidebar = () => {
   const menuRef = useRef(null);
   const navigate = useNavigate();
 
-  useEffect(() => { getUsers(); }, [getUsers]);
+  useEffect(() => { 
+    getUsers(); 
+    fetchStatuses();
+  }, [getUsers, fetchStatuses]);
 
   // Close menu on outside click
   useEffect(() => {

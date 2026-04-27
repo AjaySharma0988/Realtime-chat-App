@@ -4,6 +4,7 @@ import { formatMessageTime } from "../lib/utils";
 import EmojiReactionPanel from "./EmojiReactionPanel";
 import MessageReactions from "./MessageReactions";
 import { useChatStore } from "../store/useChatStore";
+import { useStatusStore } from "../store/useStatusStore";
 
 // ── Search highlight ─────────────────────────────────────────────────────────
 const HighlightText = ({ text, query }) => {
@@ -41,6 +42,52 @@ const ReplyQuote = ({ replyTo, onScrollTo }) => {
   );
 };
 
+// ── Status preview (High Fidelity - Image 1) ────────────────────────────────
+const StatusPreview = ({ statusRef, onOpenStatus }) => {
+  if (!statusRef?.statusId) return null;
+  const isDeleted = statusRef.deleted;
+
+  if (isDeleted) {
+    return (
+      <div className="bg-black/10 dark:bg-white/5 rounded-xl p-3 mb-2.5 flex items-center gap-3 border-l-[3.5px] border-white/20 opacity-60 italic select-none">
+        <div className="size-11 rounded-lg bg-base-300 flex items-center justify-center flex-shrink-0 border border-white/5">
+          <RotateCw size={18} className="text-white/20" />
+        </div>
+        <span className="text-[13px] text-white/60">Deleted story</span>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className="bg-black/20 dark:bg-white/10 rounded-xl p-2.5 mb-2.5 flex items-center gap-3 border-l-[3.5px] border-primary/80 cursor-pointer hover:bg-black/30 dark:hover:bg-white/15 transition-all active:scale-[0.98] group/status"
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpenStatus();
+      }}
+    >
+      <div className="size-14 rounded-lg bg-base-300 flex-shrink-0 overflow-hidden shadow-sm border border-white/5">
+        {statusRef.mediaType === "video" ? (
+          <video src={statusRef.mediaUrl} className="w-full h-full object-cover" />
+        ) : (
+          <img src={statusRef.mediaUrl} alt="" className="w-full h-full object-cover" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <div className="p-0.5 rounded-full bg-primary/20 text-primary">
+             <RotateCw size={10} className="animate-spin-slow" />
+          </div>
+          <span className="text-[11px] font-black text-primary uppercase tracking-widest opacity-90">Story</span>
+        </div>
+        <p className="text-[13px] font-bold text-white truncate drop-shadow-sm">
+          {statusRef.caption || "View status"}
+        </p>
+      </div>
+    </div>
+  );
+};
+
 export const MessageBubble = ({
   message,
   selectedUser,
@@ -66,6 +113,7 @@ export const MessageBubble = ({
 }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const { reactToMessage } = useChatStore();
+  const { setViewingUserId } = useStatusStore();
 
   const handleEmojiSelect = (emoji) => {
     reactToMessage(message._id, emoji);
@@ -135,6 +183,13 @@ export const MessageBubble = ({
         }}
       >
         {!isLargeEmoji && <ReplyQuote replyTo={message.replyTo} onScrollTo={onScrollToReply} />}
+        {!isLargeEmoji && message.statusRef && (
+          <StatusPreview 
+            statusRef={message.statusRef} 
+            onOpenStatus={() => setViewingUserId(message.statusRef.userId || (isSent ? selectedUser?._id : message.senderId))} 
+          />
+        )}
+
 
         {/* IMAGE */}
         {message.image && (

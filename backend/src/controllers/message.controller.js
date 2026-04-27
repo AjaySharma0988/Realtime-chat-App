@@ -86,13 +86,16 @@ export const sendMessage = async (req, res) => {
     const {
       text, image, audio,
       replyTo,              // embedded object { messageId, text, senderName, image }
-      type = "text",        // "text" | "call"
+      statusRef,            // { statusId, mediaUrl, mediaType, caption }
+      type = "text",        // "text" | "call" | "status-reply"
       callType,             // "audio" | "video"
       callStatus,           // "completed" | "missed" | "rejected"
       callDuration = 0,
     } = req.body;
     const { id: receiverId } = req.params;
     const senderId = req.user._id;
+
+    console.log("[Message] Sending:", { type, hasStatus: !!statusRef, text: text?.slice(0, 20) });
 
     let imageUrl;
     if (image) {
@@ -130,6 +133,7 @@ export const sendMessage = async (req, res) => {
       image: imageUrl,
       audio: audioUrl,
       replyTo: replyTo || null,      // snapshot already built on frontend
+      statusRef: statusRef || null,
       type,
       callType: callType || null,
       callStatus: callStatus || null,
