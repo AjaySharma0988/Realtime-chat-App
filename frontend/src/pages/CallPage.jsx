@@ -314,25 +314,35 @@ const CallPage = () => {
   };
 
   // ── ICE drain ────────────────────────────────────────────────────────────
+  // Called immediately after setRemoteDescription() on BOTH sides.
+  // CRITICAL: set remoteReady = true FIRST so the live ice-candidate handler
+  // knows it can add directly. Then drain the buffer.
   const drainIce = useCallback(async () => {
     if (!pcRef.current || !pcRef.current.remoteDescription) return;
+
+    // Mark remote ready BEFORE draining so concurrent ice-candidate events
+    // that arrive during the async drain loop are added directly, not re-queued.
     remoteReady.current = true;
-    
+
     // Atomically grab and clear the current queue
     const candidates = [...icePending.current];
     icePending.current = [];
-    
-    if (candidates.length === 0) return;
-    console.log(`[WebRTC] Draining ${candidates.length} pending ICE candidates`);
-    
-    for (const c of candidates) {
-      try { 
-        if (c) {
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
-          console.log("[WebRTC] Added pending ICE candidate");
+
+    if (candidates.length > 0) {
+      console.log(`[ICE] Draining ${candidates.length} buffered candidates`);
+      for (const c of candidates) {
+        try {
+          if (c && pcRef.current?.remoteDescription) {
+            await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
+          }
+        } catch (e) {
+          // Ignore benign "candidate cannot be added" errors — these happen
+          // when the candidate is for an m-line that doesn't exist locally.
+          if (!e.message?.includes("The ICE candidate could not be added")) {
+            console.warn("[ICE] Drain error:", e.message);
+          }
         }
       }
-      catch (e) { console.warn("[WebRTC] ICE drain error:", e.message); }
     }
   }, []);
 
@@ -430,46 +440,46 @@ const CallPage = () => {
       }
     };
 
-    // 🧩 PART 1: FIX ontrack HANDLER
+    // ── Track handler — critical for video/audio flow ─────────────────────
+    // BUG FIX: Do NOT use "prev || stream" guard — audio tracks arrive before
+    // video tracks. The guard would silently drop the video track (black screen).
+    // Instead, always update the stream reference to pick up all tracks.
     pc.ontrack = (event) => {
-      const stream = event.streams[0];
+      const stream = event.streams?.[0] ?? new MediaStream([event.track]);
       const track = event.track;
-      const label = track.label.toLowerCase();
+      const label = track.label?.toLowerCase() ?? "";
 
       const isScreen =
         label.includes("screen") ||
         label.includes("display") ||
         track.contentHint === "detail";
 
-      console.log("TRACK RECEIVED:", label, "isScreen:", isScreen);
+      console.log(`[Track] Received: kind=${track.kind} label="${label}" isScreen=${isScreen}`);
 
       if (isScreen) {
-        // ✅ SCREEN STREAM → MEDIA VIEW ONLY
         console.log("📺 Screen stream received");
         setRemoteScreenStream(stream);
         setIsRemoteScreenSharing(true);
-
         track.onended = () => {
-          console.log("Remote screen track ended");
           setRemoteScreenStream(null);
           setIsRemoteScreenSharing(false);
         };
       } else {
-        // ✅ CAMERA STREAM → CALL PANEL ONLY
-        console.log("📹 Camera stream received");
+        console.log(`📹 Camera ${track.kind} track received`);
 
-        // IMPORTANT: DO NOT overwrite if already set
-        setRemoteCameraStream(prev => prev || stream);
+        // Always update the camera stream so all tracks (audio + video) are captured.
+        // Using a functional update ensures the latest stream with all tracks is used.
+        setRemoteCameraStream(stream);
 
-        const rs = event.streams?.[0] ?? new MediaStream([track]);
-        const hasVideo = rs.getVideoTracks().some((t) => t.enabled && t.readyState === "live");
-        setPeerCameraOff(!hasVideo);
-
-        if (hasVideo) setPeerHasEverEnabledVideo(true);
+        if (track.kind === "video") {
+          const hasVideo = stream.getVideoTracks().some((t) => t.enabled && t.readyState === "live");
+          setPeerCameraOff(!hasVideo);
+          if (hasVideo) setPeerHasEverEnabledVideo(true);
+        }
 
         // Monitor for unexpected track ending
         track.onended = () => {
-          console.warn("[Track] Remote track ended unexpectedly:", track.kind);
+          console.warn("[Track] Remote track ended:", track.kind);
         };
       }
     };
@@ -779,42 +789,43 @@ const CallPage = () => {
     // Caller: peer accepted
     sock.on("call-accepted-by-peer", async ({ answer }) => {
       if (!pcRef.current || cleanedUp.current) return;
-      console.log("ANSWER RECEIVED");
+      console.log("[WebRTC] Answer received");
       try {
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
         console.log("[WebRTC] Answer received & set");
         await drainIce();
 
-        // ✅ FORCE UI TRANSITION
-        setStatus("active");
-        console.log("CALL STATUS: active (FORCE)");
+        // DO NOT force status = "active" here.
+        // ICE negotiation has NOT completed yet — the P2P path is not established.
+        // The ICE state machine (oniceconnectionstatechange) will set "active"
+        // when state reaches "connected" or "completed".
+        // Forcing active here = caller UI says connected but receiver is still "checking".
+        console.log("[WebRTC] Waiting for ICE to complete...");
 
-        // Tell main window the call was accepted — clears outgoingCall state
+        // Tell main window the call was accepted — clears outgoingCall spinner
         getBc()?.postMessage({ type: "CALL_ACCEPTED" });
 
-        // 🧩 SAFETY TIMEOUT (FINAL FALLBACK)
-        setTimeout(() => {
-          if (pcRef.current?.connectionState === "connected" || pcRef.current?.iceConnectionState === "connected") {
-            setStatus("active");
-          }
-        }, 2000);
-
-      } catch (e) { console.error("[answer]", e); }
+      } catch (e) { console.error("[WebRTC] Answer handling error:", e); }
     });
 
     // ICE from peer
     sock.on("ice-candidate", async ({ candidate }) => {
       if (!candidate || cleanedUp.current) return;
       console.log("[WebRTC] ICE received");
-      
-      if (remoteReady.current && pcRef.current && pcRef.current.remoteDescription) {
-        try { 
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)); 
-          console.log("[WebRTC] Successfully added remote ICE candidate");
+
+      if (remoteReady.current && pcRef.current?.remoteDescription) {
+        // Remote description is set — add candidate immediately
+        try {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log("[WebRTC] ICE candidate added");
+        } catch (e) {
+          if (!e.message?.includes("The ICE candidate could not be added")) {
+            console.warn("[WebRTC] addIceCandidate error:", e.message);
+          }
         }
-        catch (e) { console.warn("[WebRTC] addIceCandidate error:", e.message); }
       } else {
-        console.log("[WebRTC] Buffering remote ICE candidate (remote description not ready)");
+        // Remote description not set yet — queue for drainIce()
+        console.log("[WebRTC] ICE candidate queued (remote desc not ready)");
         icePending.current.push(candidate);
       }
     });

@@ -61,25 +61,31 @@ export default function ActiveCallManager() {
     setTimeout(resolve, 2000); // Max 2s wait
   });
 
-  // ── ICE drain ──────────────────────────────────────────────────────────────
+  // ── ICE drain ──────────────────────────────────────────────────────
+  // CRITICAL: set remoteReady = true FIRST so the ice-candidate handler
+  // can add directly. Then drain the buffer.
   const drainIce = useCallback(async () => {
     if (!pcRef.current || !pcRef.current.remoteDescription) return;
+
+    // Mark remote ready BEFORE draining so concurrent candidates are added directly
     remoteReady.current = true;
-    
+
     const candidates = [...icePending.current];
     icePending.current = [];
-    
-    if (candidates.length === 0) return;
-    console.log(`[WebRTC Manager] Draining ${candidates.length} pending ICE candidates`);
 
-    for (const c of candidates) {
-      try {
-        if (c) {
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
-          console.log("[WebRTC Manager] Added pending ICE candidate");
+    if (candidates.length > 0) {
+      console.log(`[ICE Manager] Draining ${candidates.length} buffered candidates`);
+      for (const c of candidates) {
+        try {
+          if (c && pcRef.current?.remoteDescription) {
+            await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
+          }
+        } catch (e) {
+          if (!e.message?.includes("The ICE candidate could not be added")) {
+            console.warn("[ICE Manager] Drain error:", e.message);
+          }
         }
       }
-      catch (e) { console.warn("[WebRTC Manager] ICE drain error:", e.message); }
     }
   }, []);
 
@@ -341,22 +347,16 @@ export default function ActiveCallManager() {
 
     sock.on("call-accepted-by-peer", async ({ answer }) => {
       if (!pcRef.current || cleanedUp.current) return;
-      console.log("[WebRTC Manager] Answer received from peer");
+      console.log("[WebRTC Manager] Answer received");
       try {
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
         console.log("[WebRTC Manager] Answer received & set");
         await drainIce();
 
-        // ✅ FORCE UI TRANSITION
-        markCallActive();
-        console.log("[WebRTC Manager] Call STATUS: connected (FORCE)");
-
-        // 🧩 SAFETY TIMEOUT (FINAL FALLBACK)
-        setTimeout(() => {
-          if (pcRef.current?.connectionState === "connected" || pcRef.current?.iceConnectionState === "connected") {
-            markCallActive();
-          }
-        }, 2000);
+        // DO NOT force markCallActive() here.
+        // ICE has NOT completed yet. The ICE state machine (oniceconnectionstatechange)
+        // will call markCallActive() when state = "connected" or "completed".
+        console.log("[WebRTC Manager] Waiting for ICE to complete...");
 
       } catch (e) { console.warn("[WebRTC Manager] answer error:", e.message); }
     });
@@ -364,15 +364,18 @@ export default function ActiveCallManager() {
     sock.on("ice-candidate", async ({ candidate }) => {
       if (!candidate || cleanedUp.current) return;
       console.log("[WebRTC Manager] ICE received");
-      
-      if (remoteReady.current && pcRef.current && pcRef.current.remoteDescription) {
-        try { 
-          await pcRef.current?.addIceCandidate(new RTCIceCandidate(candidate)); 
-          console.log("[WebRTC Manager] Successfully added remote ICE candidate");
+
+      if (remoteReady.current && pcRef.current?.remoteDescription) {
+        try {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          console.log("[WebRTC Manager] ICE candidate added");
+        } catch (e) {
+          if (!e.message?.includes("The ICE candidate could not be added")) {
+            console.warn("[WebRTC Manager] addIceCandidate error:", e.message);
+          }
         }
-        catch (e) { console.warn("[WebRTC Manager] addIceCandidate error:", e.message); }
       } else {
-        console.log("[WebRTC Manager] Buffering remote ICE candidate");
+        console.log("[WebRTC Manager] ICE candidate queued");
         icePending.current.push(candidate);
       }
     });
