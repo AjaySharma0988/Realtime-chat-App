@@ -315,21 +315,25 @@ const CallPage = () => {
 
   // ── ICE drain ────────────────────────────────────────────────────────────
   const drainIce = useCallback(async () => {
-    if (!pcRef.current) return;
+    if (!pcRef.current || !pcRef.current.remoteDescription) return;
     remoteReady.current = true;
-    console.log(`[WebRTC] Draining ${icePending.current.length} pending ICE candidates`);
     
-    // Process candidates sequentially to avoid potential race conditions in some browsers
-    for (const c of icePending.current) {
+    // Atomically grab and clear the current queue
+    const candidates = [...icePending.current];
+    icePending.current = [];
+    
+    if (candidates.length === 0) return;
+    console.log(`[WebRTC] Draining ${candidates.length} pending ICE candidates`);
+    
+    for (const c of candidates) {
       try { 
-        if (c && pcRef.current.remoteDescription) {
+        if (c) {
           await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
           console.log("[WebRTC] Added pending ICE candidate");
         }
       }
       catch (e) { console.warn("[WebRTC] ICE drain error:", e.message); }
     }
-    icePending.current = [];
   }, []);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
@@ -388,6 +392,14 @@ const CallPage = () => {
       }
     }, 15_000);
   }, [peerId]);
+
+  // ── Helper: Wait for ICE gathering ─────────────────────────────────────────
+  const waitForIce = (pc) => new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") return resolve();
+    const check = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", check); resolve(); } };
+    pc.addEventListener("icegatheringstatechange", check);
+    setTimeout(resolve, 2000); // Max 2s wait for initial candidates
+  });
 
   // ── Attempt ICE restart ───────────────────────────────────────────────────
   const attemptIceRestart = useCallback(() => {
@@ -652,12 +664,16 @@ const CallPage = () => {
       console.log("[WebRTC] Caller creating offer");
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      setStatus("calling");
       
+      // 🧩 WAIT FOR ICE (Step 6 fix)
+      console.log("[WebRTC] Waiting for initial ICE candidates...");
+      await waitForIce(pc);
+      
+      setStatus("calling");
       console.log("[WebRTC] Sending offer to:", peerId);
       sock.emit("call-user", {
         to: peerId,
-        offer,
+        offer: pc.localDescription, // Use description AFTER gathering
         callType,
         callerInfo: { _id: userId, fullName: peerName, profilePic: peerPic }
       });
@@ -694,11 +710,15 @@ const CallPage = () => {
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       await drainIce();
       
-      const answer = await pc.createAnswer();
       console.log("[WebRTC] Receiver creating answer");
+      const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       
-      sock.emit("call-accepted", { to: peerId, answer });
+      // 🧩 WAIT FOR ICE (Step 6 fix)
+      console.log("[WebRTC] Waiting for initial ICE candidates...");
+      await waitForIce(pc);
+      
+      sock.emit("call-accepted", { to: peerId, answer: pc.localDescription });
       setStatus("connecting");
     } catch (err) {
       console.error("[WebRTC] Receiver flow error:", err);

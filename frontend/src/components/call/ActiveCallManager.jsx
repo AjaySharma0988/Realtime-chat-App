@@ -55,20 +55,24 @@ export default function ActiveCallManager() {
 
   // ── ICE drain ──────────────────────────────────────────────────────────────
   const drainIce = useCallback(async () => {
-    if (!pcRef.current) return;
+    if (!pcRef.current || !pcRef.current.remoteDescription) return;
     remoteReady.current = true;
-    console.log(`[WebRTC Manager] Draining ${icePending.current.length} pending ICE candidates`);
+    
+    const candidates = [...icePending.current];
+    icePending.current = [];
+    
+    if (candidates.length === 0) return;
+    console.log(`[WebRTC Manager] Draining ${candidates.length} pending ICE candidates`);
 
-    for (const c of icePending.current) {
+    for (const c of candidates) {
       try {
-        if (c && pcRef.current.remoteDescription) {
+        if (c) {
           await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
           console.log("[WebRTC Manager] Added pending ICE candidate");
         }
       }
       catch (e) { console.warn("[WebRTC Manager] ICE drain error:", e.message); }
     }
-    icePending.current = [];
   }, []);
 
   // ── Cleanup ─────────────────────────────────────────────────────────────────
@@ -237,10 +241,15 @@ export default function ActiveCallManager() {
       pc.addTransceiver('video', { direction: 'recvonly' });
     }
 
+    console.log("[WebRTC Manager] Caller creating offer");
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    
+    console.log("[WebRTC Manager] Waiting for initial ICE...");
+    await waitForIce(pc);
+
     sock.emit("call-user", {
-      to: peerId, offer, callType,
+      to: peerId, offer: pc.localDescription, callType,
       callerInfo: {
         _id: authUser?._id,
         fullName: authUser?.fullName,
@@ -274,11 +283,14 @@ export default function ActiveCallManager() {
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     await drainIce();
     
-    const answer = await pc.createAnswer();
     console.log("[WebRTC Manager] Receiver creating answer");
+    const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     
-    sock.emit("call-accepted", { to: peerId, answer });
+    console.log("[WebRTC Manager] Waiting for initial ICE...");
+    await waitForIce(pc);
+
+    sock.emit("call-accepted", { to: peerId, answer: pc.localDescription });
   }, [getMedia, buildPC, drainIce, peerId, callType]);
 
   // ── Heartbeat ──────────────────────────────────────────────────────────────

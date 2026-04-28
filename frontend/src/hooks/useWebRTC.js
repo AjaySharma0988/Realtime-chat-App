@@ -29,12 +29,18 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
 
   // ── Add buffered ICE candidates once remote description is set ────────────
   const drainCandidates = useCallback(async () => {
-    if (!pcRef.current) return;
+    if (!pcRef.current || !pcRef.current.remoteDescription) return;
     remoteDescSet.current = true;
-    console.log(`[useWebRTC] Draining ${pendingCandidates.current.length} buffered candidates`);
-    for (const c of pendingCandidates.current) {
+    
+    const candidates = [...pendingCandidates.current];
+    pendingCandidates.current = [];
+    
+    if (candidates.length === 0) return;
+    console.log(`[useWebRTC] Draining ${candidates.length} buffered candidates`);
+
+    for (const c of candidates) {
       try {
-        if (c && pcRef.current.remoteDescription) {
+        if (c) {
           await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
           console.log("[useWebRTC] Added buffered ICE candidate");
         }
@@ -42,7 +48,6 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
         console.warn("[useWebRTC] drainCandidates error:", e.message);
       }
     }
-    pendingCandidates.current = [];
   }, []);
 
   // ── Handle incoming ICE candidate ─────────────────────────────────────────
@@ -60,6 +65,13 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
       pendingCandidates.current.push(candidate);
     }
   }, []);
+
+  const waitForIce = (pc) => new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") return resolve();
+    const check = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", check); resolve(); } };
+    pc.addEventListener("icegatheringstatechange", check);
+    setTimeout(resolve, 2000);
+  });
 
   // ── Add answer from peer (caller side) ───────────────────────────────────
   const handleRemoteAnswer = useCallback(async (answer) => {
@@ -144,7 +156,11 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
         setStatus("connecting");
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        socket.emit("call-user", { to: peerId, offer, callType, callerInfo: null /* set by store */ });
+        
+        console.log("[useWebRTC] Waiting for ICE...");
+        await waitForIce(pc);
+        
+        socket.emit("call-user", { to: peerId, offer: pc.localDescription, callType, callerInfo: null });
       } else {
         // Receiver: set remote offer first
         if (initialOffer) {
@@ -152,7 +168,11 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
           await drainCandidates();
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
-          socket.emit("call-accepted", { to: peerId, answer });
+          
+          console.log("[useWebRTC] Waiting for ICE...");
+          await waitForIce(pc);
+          
+          socket.emit("call-accepted", { to: peerId, answer: pc.localDescription });
           setStatus("connecting");
         }
       }
