@@ -24,35 +24,11 @@ import WatchPartyControls from "../components/call/WatchPartyControls";
 import WatchPartyContainer from "../components/call/WatchPartyContainer";
 import { THEMES } from "../constants";
 import { useThemeStore } from "../store/useThemeStore";
+import { ICE_SERVERS } from "../constants/webrtc";
 
 const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5001" : "/";
 
-// ── ICE / STUN / TURN configuration ─────────────────────────────────────────
-// Free open-relay TURN (openrelay.metered.ca) — no sign-up needed.
-// Replace with Twilio / Xirsys / your own Coturn in production for guaranteed uptime.
-const ICE_SERVERS = {
-  iceServers: [
-    // Google STUN — multiple for redundancy
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-    // Free TURN relay — handles symmetric NAT, firewalls, etc.
-    {
-      urls: [
-        "turn:openrelay.metered.ca:80",
-        "turn:openrelay.metered.ca:443",
-        "turn:openrelay.metered.ca:80?transport=tcp",
-        "turn:openrelay.metered.ca:443?transport=tcp",
-      ],
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-  ],
-  iceTransportPolicy: "all", // try direct/STUN first, fall back to TURN
-  bundlePolicy: "max-bundle",
-  rtcpMuxPolicy: "require",
-};
+// ── ICE / STUN / TURN configuration moved to constants/webrtc.js ─────────────
 
 const MAX_ICE_RESTARTS = 3;
 
@@ -541,7 +517,10 @@ const CallPage = () => {
     };
 
     pc.onicegatheringstatechange = () => {
-      console.log("[ICE gathering]", pc.iceGatheringState);
+      console.log("[WebRTC] ICE gathering state:", pc.iceGatheringState);
+      if (pc.iceGatheringState === "complete") {
+        console.log("[WebRTC] ICE gathering complete. All candidates collected.");
+      }
     };
 
     return pc;

@@ -12,31 +12,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { useCallStore } from "../../store/useCallStore";
 import { useAuthStore } from "../../store/useAuthStore";
+import { ICE_SERVERS } from "../../constants/webrtc";
 import CallWindow from "./CallWindow";
 
 const BASE_URL =
   import.meta.env.MODE === "development" ? "http://localhost:5001" : "/";
 
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    {
-      urls: [
-        "turn:openrelay.metered.ca:80",
-        "turn:openrelay.metered.ca:443",
-        "turn:openrelay.metered.ca:80?transport=tcp",
-        "turn:openrelay.metered.ca:443?transport=tcp",
-      ],
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-  ],
-  iceTransportPolicy: "all",
-  bundlePolicy: "max-bundle",
-  rtcpMuxPolicy: "require",
-};
+// ── ICE / STUN / TURN configuration moved to constants/webrtc.js ─────────────
 
 const MAX_ICE_RESTARTS = 3;
 
@@ -181,6 +163,10 @@ export default function ActiveCallManager() {
         markCallActive();
         console.log("CALL STATUS: connected (STATE)");
       }
+    };
+
+    pc.onicegatheringstatechange = () => {
+      console.log("[WebRTC Manager] ICE gathering state:", pc.iceGatheringState);
     };
 
     return pc;

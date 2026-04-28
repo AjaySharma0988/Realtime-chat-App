@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { ICE_SERVERS } from "../constants/webrtc";
 
 let ringtoneAudio = null;
 
@@ -17,28 +18,7 @@ const stopRingtone = () => {
   }
 };
 
-// ─── ICE / STUN ──────────────────────────────────────────────────────────────
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    }
-  ],
-};
+// ─── ICE / STUN — Moved to central constants/webrtc.js ──────────────────────
 
 let peerConnection = null;
 
@@ -78,6 +58,13 @@ const createPeerConnection = (onIceCandidate, onRemoteStream) => {
 
   pc.oniceconnectionstatechange = () => {
     console.log("[WebRTC] ICE state:", pc.iceConnectionState);
+    if (pc.iceConnectionState === "failed") {
+      console.warn("[WebRTC] ICE Connection Failed - Consider ICE Restart");
+    }
+  };
+
+  pc.onicegatheringstatechange = () => {
+    console.log("[WebRTC] ICE Gathering state:", pc.iceGatheringState);
   };
 
   pc.onconnectionstatechange = () => {

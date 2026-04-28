@@ -10,28 +10,9 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ICE_SERVERS } from "../constants/webrtc";
 
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    {
-      urls: "turn:openrelay.metered.ca:80",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    },
-    {
-      urls: "turn:openrelay.metered.ca:443?transport=tcp",
-      username: "openrelayproject",
-      credential: "openrelayproject",
-    }
-  ],
-};
+// ── ICE / STUN / TURN configuration moved to constants/webrtc.js ─────────────
 
 export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer }) => {
   const [localStream, setLocalStream] = useState(null);
@@ -130,6 +111,10 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
           if (pc.restartIce) pc.restartIce();
         }
         if (s === "disconnected" || s === "closed") setStatus("ended");
+      };
+
+      pc.onicegatheringstatechange = () => {
+        console.log("[useWebRTC] ICE gathering state:", pc.iceGatheringState);
       };
 
       // Failsafe: if we restart ICE, we need to handle onnegotiationneeded
