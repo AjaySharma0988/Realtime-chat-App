@@ -29,12 +29,17 @@ let pendingIceCandidates = [];
 let remoteDescriptionSet = false;
 
 const drainPendingCandidates = async () => {
+  if (!peerConnection) return;
   remoteDescriptionSet = true;
+  console.log(`[Store] Draining ${pendingIceCandidates.length} pending ICE candidates`);
   for (const candidate of pendingIceCandidates) {
     try {
-      await peerConnection?.addIceCandidate(new RTCIceCandidate(candidate));
+      if (candidate && peerConnection.remoteDescription) {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        console.log("[Store] Added pending ICE candidate");
+      }
     } catch (e) {
-      console.warn("Drained ICE candidate error:", e);
+      console.warn("[Store] Drained ICE candidate error:", e.message);
     }
   }
   pendingIceCandidates = [];

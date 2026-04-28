@@ -315,10 +315,19 @@ const CallPage = () => {
 
   // ── ICE drain ────────────────────────────────────────────────────────────
   const drainIce = useCallback(async () => {
+    if (!pcRef.current) return;
     remoteReady.current = true;
+    console.log(`[WebRTC] Draining ${icePending.current.length} pending ICE candidates`);
+    
+    // Process candidates sequentially to avoid potential race conditions in some browsers
     for (const c of icePending.current) {
-      try { await pcRef.current?.addIceCandidate(new RTCIceCandidate(c)); }
-      catch (e) { console.warn("[ICE drain]", e.message); }
+      try { 
+        if (c && pcRef.current.remoteDescription) {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
+          console.log("[WebRTC] Added pending ICE candidate");
+        }
+      }
+      catch (e) { console.warn("[WebRTC] ICE drain error:", e.message); }
     }
     icePending.current = [];
   }, []);
@@ -401,7 +410,12 @@ const CallPage = () => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
     pc.onicecandidate = ({ candidate }) => {
-      if (candidate) sock.emit("ice-candidate", { to: peerId, candidate });
+      if (candidate) {
+        console.log("[WebRTC] Sending ICE candidate to:", peerId);
+        sock.emit("ice-candidate", { to: peerId, candidate });
+      } else {
+        console.log("[WebRTC] ICE gathering complete for this PC");
+      }
     };
 
     // 🧩 PART 1: FIX ontrack HANDLER
@@ -635,9 +649,12 @@ const CallPage = () => {
     }
 
     try {
+      console.log("[WebRTC] Caller creating offer");
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       setStatus("calling");
+      
+      console.log("[WebRTC] Sending offer to:", peerId);
       sock.emit("call-user", {
         to: peerId,
         offer,
@@ -645,11 +662,11 @@ const CallPage = () => {
         callerInfo: { _id: userId, fullName: peerName, profilePic: peerPic }
       });
     } catch (err) {
-      console.error("[Caller] offer error:", err);
-      setErrorMsg("Failed to create call offer.");
+      console.error("[WebRTC] Caller offer error:", err);
+      setErrorMsg("Failed to create call offer: " + err.message);
       cleanup(false);
     }
-  }, [peerId, callType, userId, buildPC, cleanup]); // eslint-disable-line
+  }, [peerId, callType, userId, buildPC, cleanup, peerName, peerPic]);
 
   // ── Receiver flow ─────────────────────────────────────────────────────────
   const startReceiverFlow = useCallback(async (sock, offer, earlyIce = []) => {
@@ -662,21 +679,33 @@ const CallPage = () => {
 
     const pc = buildPC(sock);
     pcRef.current = pc;
-    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    
+    // Add tracks or transceivers to ensure media flow
+    if (stream.getTracks().length > 0) {
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    }
+    
+    // Receiver transceivers to ensure we can receive even if we don't send
+    if (!stream.getAudioTracks().length) pc.addTransceiver("audio", { direction: "recvonly" });
+    if (callType === "video" && !stream.getVideoTracks().length) pc.addTransceiver("video", { direction: "recvonly" });
 
     try {
+      console.log("[WebRTC] Receiver setting remote description (Offer)");
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
       await drainIce();
+      
       const answer = await pc.createAnswer();
+      console.log("[WebRTC] Receiver creating answer");
       await pc.setLocalDescription(answer);
+      
       sock.emit("call-accepted", { to: peerId, answer });
       setStatus("connecting");
     } catch (err) {
-      console.error("[Receiver] answer error:", err);
-      setErrorMsg("Failed to accept call.");
+      console.error("[WebRTC] Receiver flow error:", err);
+      setErrorMsg("Failed to accept call: " + err.message);
       cleanup(false);
     }
-  }, [peerId, buildPC, drainIce, cleanup]); // eslint-disable-line
+  }, [peerId, buildPC, drainIce, cleanup, callType]);
 
   const flowStarted = useRef(false);
 
@@ -763,10 +792,16 @@ const CallPage = () => {
     // ICE from peer
     sock.on("ice-candidate", async ({ candidate }) => {
       if (!candidate || cleanedUp.current) return;
-      if (remoteReady.current && pcRef.current) {
-        try { await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)); }
-        catch (e) { console.warn("[ICE add]", e.message); }
+      console.log("[WebRTC] Received ICE candidate from peer");
+      
+      if (remoteReady.current && pcRef.current && pcRef.current.remoteDescription) {
+        try { 
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)); 
+          console.log("[WebRTC] Successfully added remote ICE candidate");
+        }
+        catch (e) { console.warn("[WebRTC] addIceCandidate error:", e.message); }
       } else {
+        console.log("[WebRTC] Buffering remote ICE candidate (remote description not ready)");
         icePending.current.push(candidate);
       }
     });

@@ -55,10 +55,18 @@ export default function ActiveCallManager() {
 
   // ── ICE drain ──────────────────────────────────────────────────────────────
   const drainIce = useCallback(async () => {
+    if (!pcRef.current) return;
     remoteReady.current = true;
+    console.log(`[WebRTC Manager] Draining ${icePending.current.length} pending ICE candidates`);
+
     for (const c of icePending.current) {
-      try { await pcRef.current?.addIceCandidate(new RTCIceCandidate(c)); }
-      catch (e) { console.warn("[ICE drain]", e.message); }
+      try {
+        if (c && pcRef.current.remoteDescription) {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
+          console.log("[WebRTC Manager] Added pending ICE candidate");
+        }
+      }
+      catch (e) { console.warn("[WebRTC Manager] ICE drain error:", e.message); }
     }
     icePending.current = [];
   }, []);
@@ -112,7 +120,12 @@ export default function ActiveCallManager() {
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
     pc.onicecandidate = ({ candidate }) => {
-      if (candidate && peerId) sock.emit("ice-candidate", { to: peerId, candidate });
+      if (candidate && peerId) {
+        console.log("[WebRTC Manager] Sending ICE candidate to:", peerId);
+        sock.emit("ice-candidate", { to: peerId, candidate });
+      } else {
+        console.log("[WebRTC Manager] ICE gathering complete");
+      }
     };
 
     pc.ontrack = (e) => {
@@ -240,16 +253,33 @@ export default function ActiveCallManager() {
   const startReceiverFlow = useCallback(async (sock, offer, earlyIce = []) => {
     const stream = await getMedia();
     if (!stream || cleanedUp.current) return;
-    if (earlyIce.length) icePending.current.push(...earlyIce);
+    
+    if (earlyIce.length) {
+      console.log("[WebRTC Manager] Adding early ICE candidates to queue:", earlyIce.length);
+      icePending.current.push(...earlyIce);
+    }
+    
     const pc = buildPC(sock);
     pcRef.current = pc;
-    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    
+    if (stream.getTracks().length > 0) {
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    }
+    
+    // Receiver transceivers
+    if (!stream.getAudioTracks().length) pc.addTransceiver("audio", { direction: "recvonly" });
+    if (callType === "video" && !stream.getVideoTracks().length) pc.addTransceiver("video", { direction: "recvonly" });
+
+    console.log("[WebRTC Manager] Receiver setting remote description");
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     await drainIce();
+    
     const answer = await pc.createAnswer();
+    console.log("[WebRTC Manager] Receiver creating answer");
     await pc.setLocalDescription(answer);
+    
     sock.emit("call-accepted", { to: peerId, answer });
-  }, [getMedia, buildPC, drainIce, peerId]);
+  }, [getMedia, buildPC, drainIce, peerId, callType]);
 
   // ── Heartbeat ──────────────────────────────────────────────────────────────
   const startHeartbeat = useCallback((sock) => {
@@ -294,15 +324,15 @@ export default function ActiveCallManager() {
 
     sock.on("call-accepted-by-peer", async ({ answer }) => {
       if (!pcRef.current || cleanedUp.current) return;
-      console.log("ANSWER RECEIVED");
+      console.log("[WebRTC Manager] Answer received from peer");
       try {
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-        console.log("REMOTE DESC SET");
+        console.log("[WebRTC Manager] Remote description (Answer) set");
         await drainIce();
 
         // ✅ FORCE UI TRANSITION
         markCallActive();
-        console.log("CALL STATUS: connected (FORCE)");
+        console.log("[WebRTC Manager] Call STATUS: connected (FORCE)");
 
         // 🧩 SAFETY TIMEOUT (FINAL FALLBACK)
         setTimeout(() => {
@@ -311,15 +341,21 @@ export default function ActiveCallManager() {
           }
         }, 2000);
 
-      } catch (e) { console.warn("[answer]", e.message); }
+      } catch (e) { console.warn("[WebRTC Manager] answer error:", e.message); }
     });
 
     sock.on("ice-candidate", async ({ candidate }) => {
       if (!candidate || cleanedUp.current) return;
-      if (remoteReady.current) {
-        try { await pcRef.current?.addIceCandidate(new RTCIceCandidate(candidate)); }
-        catch (e) { console.warn("[ICE add]", e.message); }
+      console.log("[WebRTC Manager] Received ICE candidate from peer");
+      
+      if (remoteReady.current && pcRef.current && pcRef.current.remoteDescription) {
+        try { 
+          await pcRef.current?.addIceCandidate(new RTCIceCandidate(candidate)); 
+          console.log("[WebRTC Manager] Successfully added remote ICE candidate");
+        }
+        catch (e) { console.warn("[WebRTC Manager] addIceCandidate error:", e.message); }
       } else {
+        console.log("[WebRTC Manager] Buffering remote ICE candidate");
         icePending.current.push(candidate);
       }
     });

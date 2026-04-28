@@ -29,12 +29,17 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
 
   // ── Add buffered ICE candidates once remote description is set ────────────
   const drainCandidates = useCallback(async () => {
+    if (!pcRef.current) return;
     remoteDescSet.current = true;
+    console.log(`[useWebRTC] Draining ${pendingCandidates.current.length} buffered candidates`);
     for (const c of pendingCandidates.current) {
       try {
-        await pcRef.current?.addIceCandidate(new RTCIceCandidate(c));
+        if (c && pcRef.current.remoteDescription) {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
+          console.log("[useWebRTC] Added buffered ICE candidate");
+        }
       } catch (e) {
-        console.warn("[WebRTC] drainCandidates error:", e);
+        console.warn("[useWebRTC] drainCandidates error:", e.message);
       }
     }
     pendingCandidates.current = [];
@@ -43,10 +48,15 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
   // ── Handle incoming ICE candidate ─────────────────────────────────────────
   const handleRemoteIce = useCallback(async (candidate) => {
     if (!pcRef.current) return;
+    console.log("[useWebRTC] Received remote ICE candidate");
     if (pcRef.current.remoteDescription) {
-      try { await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)); }
-      catch (e) { console.warn("[WebRTC] addIceCandidate error:", e); }
+      try { 
+        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)); 
+        console.log("[useWebRTC] Added remote ICE candidate");
+      }
+      catch (e) { console.warn("[useWebRTC] addIceCandidate error:", e.message); }
     } else {
+      console.log("[useWebRTC] Buffering remote ICE candidate");
       pendingCandidates.current.push(candidate);
     }
   }, []);
