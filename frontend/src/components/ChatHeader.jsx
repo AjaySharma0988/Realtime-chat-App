@@ -8,6 +8,7 @@ import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
 import { useCallStore } from "../store/useCallStore";
 import toast from "react-hot-toast";
+import { getProfilePicUrl } from "../lib/utils";
 
 const CALL_DEBOUNCE_MS = 1500;
 
@@ -106,7 +107,7 @@ const ChatHeader = ({ onOpenContactPanel, onSearchToggle, isSearchOpen, onDelete
         {/* Avatar with real-time online dot */}
         <div className="relative flex-shrink-0">
           <img
-            src={selectedUser.profilePic || "/avatar.png"}
+            src={getProfilePicUrl(selectedUser)}
             alt={selectedUser.fullName}
             className="size-9 rounded-full object-cover"
           />

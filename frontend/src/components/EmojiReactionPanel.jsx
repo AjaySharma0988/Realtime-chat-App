@@ -7,7 +7,7 @@ const QUICK_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
  * EmojiReactionPanel — A premium reaction menu with quick-slots and a full picker.
  * Reuses the emoji data from Watch Party.
  */
-const EmojiReactionPanel = ({ onSelect, onClose, isOpen, isSent }) => {
+const EmojiReactionPanel = ({ onSelect, onClose, isOpen, isSent, className = "", showArrow = true }) => {
   const panelRef = useRef(null);
   const [showFullPicker, setShowFullPicker] = React.useState(false);
 
@@ -34,12 +34,12 @@ const EmojiReactionPanel = ({ onSelect, onClose, isOpen, isSent }) => {
 
   if (!isOpen) return null;
 
+  const defaultClasses = `absolute z-[1000] ${isSent ? "right-0" : "left-0"} bottom-full mb-2`;
+
   return (
     <div 
       ref={panelRef}
-      className={`absolute z-[1000] ${
-        isSent ? "right-0" : "left-0"
-      } bottom-full mb-2`}
+      className={className || defaultClasses}
     >
       {/* FULL PICKER (Pop-up above the quick bar) */}
       {showFullPicker && (
@@ -65,7 +65,9 @@ const EmojiReactionPanel = ({ onSelect, onClose, isOpen, isSent }) => {
             </div>
           </div>
           {/* Arrow pointing down to the quick bar */}
-          <div className="absolute -bottom-1.5 left-6 size-3 bg-[#1F2C34] rotate-45 border-r border-b border-white/10" />
+          {showArrow && (
+            <div className="absolute -bottom-1.5 left-6 size-3 bg-[#1F2C34] rotate-45 border-r border-b border-white/10" />
+          )}
         </div>
       )}
 
@@ -102,9 +104,11 @@ const EmojiReactionPanel = ({ onSelect, onClose, isOpen, isSent }) => {
       </div>
       
       {/* Bottom arrow for the quick bar */}
-      <div className={`absolute -bottom-1 size-3 bg-[#1F2C34]/95 rotate-45 border-r border-b border-white/10 ${
-        isSent ? "right-4" : "left-4"
-      }`} />
+      {showArrow && (
+        <div className={`absolute -bottom-1 size-3 bg-[#1F2C34]/95 rotate-45 border-r border-b border-white/10 ${
+          isSent ? "right-4" : "left-4"
+        }`} />
+      )}
     </div>
   );
 };

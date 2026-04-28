@@ -21,6 +21,21 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    about: {
+      type: String,
+      default: "Hey there! I am using Chatty.",
+    },
+    privacy: {
+      profilePhotoVisibility: {
+        type: String,
+        enum: ["everyone", "nobody", "custom"],
+        default: "everyone",
+      },
+      allowedUsers: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      }],
+    },
     deletionScheduledAt: {
       type: Date,
       default: null,

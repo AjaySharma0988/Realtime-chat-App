@@ -75,13 +75,14 @@ const formatWhatsAppDate = (dateString) => {
 
 const ChatContainer = () => {
   const {
-    messages, getMessages, isMessagesLoading,
+    messages, getMessages, isMessagesLoading, isFetchingMore, hasMore, loadMoreMessages,
     selectedUser, setSelectedUser, subscribeToMessages, unsubscribeFromMessages,
     deleteChat, bulkDeleteMessages, updateMessage,
   } = useChatStore();
   const { authUser } = useAuthStore();
   const { chatPattern, customBgImage } = useThemeStore();
 
+  const scrollContainerRef = useRef(null);
   const messageEndRef = useRef(null);
   const longPressRef = useRef(null);
   const editInputRef = useRef(null);
@@ -99,6 +100,8 @@ const ChatContainer = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentMatchIdx, setCurrentMatchIdx] = useState(0);
   const searchInputRef = useRef(null);
+
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   // ── Context menu ────────────────────────────────────────────────────────────
   const [contextMenu, setContextMenu] = useState(null);
@@ -129,6 +132,7 @@ const ChatContainer = () => {
     setEditingState(null);
     setIsCameraOpen(false);
     setCameraImage(null);
+    setShowScrollButton(false);
   }, [selectedUser._id]);
 
   useEffect(() => {
@@ -137,12 +141,67 @@ const ChatContainer = () => {
     return () => unsubscribeFromMessages();
   }, [selectedUser._id, getMessages, subscribeToMessages, unsubscribeFromMessages]);
 
-  // Auto-scroll (skip while searching)
-  useEffect(() => {
-    if (!isSearchOpen && messageEndRef.current && messages?.length) {
-      messageEndRef.current.scrollIntoView({ behavior: "smooth" });
+  // Scroll position maintenance state
+  const prevScrollHeightRef = useRef(0);
+  const isAutoScrollingRef = useRef(false);
+
+  // Handle scroll (Pagination + Scroll Button)
+  const handleScroll = useCallback(async (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+
+    // 1. Pagination: Load more if at top
+    if (scrollTop === 0 && hasMore && !isFetchingMore && messages.length > 0) {
+      prevScrollHeightRef.current = scrollHeight;
+      await loadMoreMessages(selectedUser._id);
     }
-  }, [messages, isSearchOpen]);
+
+    // 2. Scroll Button: Show if not at bottom
+    const isAtBottom = scrollHeight - scrollTop <= clientHeight + 150;
+    setShowScrollButton(!isAtBottom);
+  }, [hasMore, isFetchingMore, messages.length, loadMoreMessages, selectedUser._id]);
+
+  const scrollToBottom = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  };
+
+  // Maintain scroll position when messages are prepended
+  useEffect(() => {
+    if (isFetchingMore) return;
+
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    if (prevScrollHeightRef.current > 0) {
+      // We just loaded older messages, maintain scroll position
+      const scrollDiff = container.scrollHeight - prevScrollHeightRef.current;
+      container.scrollTop = scrollDiff;
+      prevScrollHeightRef.current = 0;
+    } else {
+      // If it's a new message (appended at bottom), auto-scroll only if at bottom or if I sent it
+      const lastMessage = messages[messages.length - 1];
+      const isMyMessage = lastMessage?.senderId === authUser._id;
+      const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 150;
+      
+      if ((isAtBottom || isMyMessage) && !isSearchOpen) {
+        messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        setShowScrollButton(false);
+      } else {
+        setShowScrollButton(true);
+      }
+    }
+  }, [messages, isFetchingMore, isSearchOpen]);
+
+  // Initial load auto-scroll
+  useEffect(() => {
+    if (!isMessagesLoading && messages.length > 0 && !prevScrollHeightRef.current) {
+      messageEndRef.current?.scrollIntoView({ behavior: "auto" });
+    }
+  }, [isMessagesLoading, selectedUser._id]);
 
   // Focus search input on open
   useEffect(() => {
@@ -392,7 +451,18 @@ const ChatContainer = () => {
               onRetake={() => setCameraImage(null)}
             />
           ) : (
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1 relative z-10">
+            <div 
+              ref={scrollContainerRef}
+              onScroll={handleScroll}
+              className="flex-1 overflow-y-auto px-4 py-3 space-y-1 relative z-10"
+            >
+              {/* Pagination Loader */}
+              {isFetchingMore && (
+                <div className="flex justify-center py-2">
+                  <span className="loading loading-spinner loading-sm text-primary/60"></span>
+                </div>
+              )}
+
               {messages.map((message, idx) => {
             const isSent = message.senderId === authUser._id;
             const isLast = idx === messages.length - 1;
@@ -449,6 +519,7 @@ const ChatContainer = () => {
                     onReleasePress={clearLongPress}
                     onScrollToReply={scrollToMessage}
                     onImageClick={openImageViewer}
+                    onDragReply={setReplyToMsg}
                   />
                 </div>
               </div>
@@ -462,6 +533,17 @@ const ChatContainer = () => {
             </div>
           )}
           </div>
+        )}
+
+        {/* Scroll to Bottom Button */}
+        {showScrollButton && (
+          <button
+            onClick={scrollToBottom}
+            className="absolute bottom-24 left-1/2 -translate-x-1/2 size-11 rounded-full bg-[#202c33] text-white shadow-xl border border-white/10 flex items-center justify-center hover:bg-[#2a3942] transition-all z-50 animate-in fade-in zoom-in slide-in-from-bottom-4 duration-200"
+            aria-label="Scroll to bottom"
+          >
+            <ChevronDown className="size-6" />
+          </button>
         )}
 
         {/* Deactivated account banner */}

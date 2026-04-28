@@ -3,8 +3,8 @@ import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import { uploadStatus } from "../lib/statusService";
 import { useChatStore } from "../store/useChatStore";
-import { 
-  X, Image as ImageIcon, Video, Send, Loader2, Music, Search, Check, 
+import {
+  X, Image as ImageIcon, Video, Send, Loader2, Music, Search, Check,
   Music2, Clock, Users, Type, Smile, Scissors, PenTool, Lock, ChevronRight,
   Play, Pause, Headphones, Globe
 } from "lucide-react";
@@ -15,28 +15,28 @@ import {
  */
 const StatusUpload = ({ onClose, onUploaded }) => {
   const { users } = useChatStore(); // For audience selection
-  
-  const [preview, setPreview]     = useState(null);
+
+  const [preview, setPreview] = useState(null);
   const [mediaType, setMediaType] = useState(null);
-  const [mediaB64, setMediaB64]   = useState(null);
-  const [caption, setCaption]     = useState("");
+  const [mediaB64, setMediaB64] = useState(null);
+  const [caption, setCaption] = useState("");
   const [isUploading, setIsUploading] = useState(false);
-  
+
   // Feature 2: Duration (hours)
-  const [duration, setDuration]   = useState(24);
+  const [duration, setDuration] = useState(24);
   const [showDurationMenu, setShowDurationMenu] = useState(false);
 
   // Feature 3: Music
-  const [selectedMusic, setSelectedMusic] = useState(null); 
+  const [selectedMusic, setSelectedMusic] = useState(null);
   const [showMusicMenu, setShowMusicMenu] = useState(false);
-  const [musicTab, setMusicTab]   = useState("Suggested");
+  const [musicTab, setMusicTab] = useState("Suggested");
   const [musicSearchQuery, setMusicSearchQuery] = useState("");
 
   // Feature 5: Audience
-  const [audience, setAudience]   = useState({ type: "all", users: [] });
+  const [audience, setAudience] = useState({ type: "all", users: [] });
   const [showAudienceMenu, setShowAudienceMenu] = useState(false);
   const [showUserSelector, setShowUserSelector] = useState(false);
-  const [userSearchQuery, setUserSearchQuery]   = useState("");
+  const [userSearchQuery, setUserSearchQuery] = useState("");
 
   const [currentAudio, setCurrentAudio] = useState(null);
   const [playingId, setPlayingId] = useState(null);
@@ -126,7 +126,7 @@ const StatusUpload = ({ onClose, onUploaded }) => {
     if (!file) return;
     console.log("Selected media file:", file.name, file.size);
 
-    const isImg   = file.type.startsWith("image/");
+    const isImg = file.type.startsWith("image/");
     const isVideo = file.type.startsWith("video/");
 
     if (!isImg && !isVideo) {
@@ -162,13 +162,13 @@ const StatusUpload = ({ onClose, onUploaded }) => {
       });
       console.log("Upload success:", newStatus._id);
       toast.success("Status posted!");
-      
+
       // Cleanup
       setPreview(null);
       setMediaB64(null);
       setCaption("");
       setSelectedMusic(null);
-      
+
       onUploaded?.(newStatus);
       onClose?.();
     } catch (err) {
@@ -187,7 +187,7 @@ const StatusUpload = ({ onClose, onUploaded }) => {
   ];
 
   const MUSIC_TABS = ["Suggested", "Mood", "Genre"];
-  
+
   const mockSongs = [
     { title: "Saasein", artist: "Sohini Mishra", duration: "4:51", thumbnail: "https://i.pravatar.cc/100?u=1", previewUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" },
     { title: "Dil Ka Rishta", artist: "Nadeem-Shravan", duration: "5:04", thumbnail: "https://i.pravatar.cc/100?u=2", previewUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3" },
@@ -251,18 +251,18 @@ const StatusUpload = ({ onClose, onUploaded }) => {
         <h3 className="text-xl font-bold">Choose Music</h3>
         <button onClick={() => setShowMusicMenu(false)} className="p-2"><X /></button>
       </div>
-      
+
       <div className="relative mb-6 flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={18} />
-          <input 
+          <input
             className="w-full bg-[#2C2C2E] rounded-xl py-3.5 pl-12 pr-4 text-sm outline-none focus:ring-2 ring-primary/50 transition-all"
             placeholder="Search artists or songs..."
             value={musicSearchQuery}
             onChange={(e) => setMusicSearchQuery(e.target.value)}
           />
         </div>
-        <button 
+        <button
           onClick={() => audioInputRef.current?.click()}
           className="btn btn-square btn-primary rounded-xl shrink-0"
           title="Upload from device"
@@ -274,7 +274,7 @@ const StatusUpload = ({ onClose, onUploaded }) => {
 
       <div className="flex gap-4 mb-6 border-b border-white/5 pb-2">
         {MUSIC_TABS.map(tab => (
-          <button 
+          <button
             key={tab}
             onClick={() => setMusicTab(tab)}
             className={`text-sm font-bold pb-2 px-1 transition-all ${musicTab === tab ? "text-primary border-b-2 border-primary" : "text-white/40"}`}
@@ -286,8 +286,8 @@ const StatusUpload = ({ onClose, onUploaded }) => {
 
       <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
         {mockSongs.map((song, i) => (
-          <div 
-            key={i} 
+          <div
+            key={i}
             onClick={(e) => handleMusicPlay(song, e)}
             className="flex items-center gap-4 p-3 rounded-2xl hover:bg-white/5 transition-colors group cursor-pointer"
           >
@@ -301,7 +301,7 @@ const StatusUpload = ({ onClose, onUploaded }) => {
               <p className="font-bold truncate">{song.title}</p>
               <p className="text-xs text-white/50 truncate">{song.artist} • {song.duration}</p>
             </div>
-            <button 
+            <button
               onClick={(e) => handleAddSong(song, e)}
               className="px-4 py-2 rounded-xl bg-primary/20 text-primary font-bold text-xs hover:bg-primary hover:text-white transition-all flex items-center gap-2"
             >
@@ -321,15 +321,14 @@ const StatusUpload = ({ onClose, onUploaded }) => {
         <button onClick={() => setShowDurationMenu(false)} className="p-2"><X /></button>
       </div>
       <p className="text-sm text-white/50 mb-6">Choose how long the story will be visible to your contacts.</p>
-      
+
       <div className="space-y-3">
         {DURATION_OPTIONS.map(opt => (
-          <div 
+          <div
             key={opt.value}
             onClick={() => !opt.locked && setDuration(opt.value)}
-            className={`flex items-center justify-between p-4 rounded-2xl transition-all cursor-pointer ${
-              duration === opt.value ? "bg-primary/10 ring-1 ring-primary/50" : "bg-white/5 hover:bg-white/10"
-            } ${opt.locked ? "opacity-50 grayscale" : ""}`}
+            className={`flex items-center justify-between p-4 rounded-2xl transition-all cursor-pointer ${duration === opt.value ? "bg-primary/10 ring-1 ring-primary/50" : "bg-white/5 hover:bg-white/10"
+              } ${opt.locked ? "opacity-50 grayscale" : ""}`}
           >
             <span className="font-bold">{opt.label}</span>
             {opt.locked ? <Lock size={16} /> : duration === opt.value ? <Check size={20} className="text-primary" /> : null}
@@ -365,7 +364,7 @@ const StatusUpload = ({ onClose, onUploaded }) => {
       <div className="p-4">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30" size={18} />
-          <input 
+          <input
             className="w-full bg-white/5 rounded-xl py-3 pl-12 pr-4 text-sm outline-none"
             placeholder="Search contacts..."
             value={userSearchQuery}
@@ -378,8 +377,8 @@ const StatusUpload = ({ onClose, onUploaded }) => {
         {users
           .filter(u => u.fullName.toLowerCase().includes(userSearchQuery.toLowerCase()))
           .map(user => (
-            <div 
-              key={user._id} 
+            <div
+              key={user._id}
               onClick={() => toggleAudienceUser(user._id)}
               className="flex items-center gap-4 p-3 hover:bg-white/5 rounded-2xl cursor-pointer"
             >
@@ -402,22 +401,21 @@ const StatusUpload = ({ onClose, onUploaded }) => {
         <h3 className="text-xl font-bold">Choose Audience</h3>
         <button onClick={() => setShowAudienceMenu(false)} className="p-2"><X /></button>
       </div>
-      
+
       <div className="space-y-3">
         {[
           { id: "all", label: "My contacts", icon: Globe, desc: "Everyone in your contact list" },
           { id: "exclude", label: "My contacts except...", icon: Users, desc: "Exclude specific people", sub: `${audience.users.length} excluded` },
           { id: "include", label: "Only share with...", icon: Lock, desc: "Select specific recipients", sub: `${audience.users.length} selected` },
         ].map(opt => (
-          <div 
+          <div
             key={opt.id}
             onClick={() => {
               setAudience({ ...audience, type: opt.id });
               if (opt.id !== "all") setShowUserSelector(true);
             }}
-            className={`flex items-center gap-4 p-4 rounded-2xl cursor-pointer transition-all ${
-              audience.type === opt.id ? "bg-success/10 ring-1 ring-success/50" : "bg-white/5 hover:bg-white/10"
-            }`}
+            className={`flex items-center gap-4 p-4 rounded-2xl cursor-pointer transition-all ${audience.type === opt.id ? "bg-success/10 ring-1 ring-success/50" : "bg-white/5 hover:bg-white/10"
+              }`}
           >
             <div className={`size-12 rounded-full flex items-center justify-center ${audience.type === opt.id ? "bg-success/20 text-success" : "bg-white/10 text-white/60"}`}>
               <opt.icon size={22} />
@@ -436,7 +434,7 @@ const StatusUpload = ({ onClose, onUploaded }) => {
         ))}
       </div>
 
-      <button 
+      <button
         onClick={() => setShowAudienceMenu(false)}
         className="w-full btn btn-success mt-8 h-14 rounded-2xl font-black text-lg shadow-xl shadow-success/20"
       >
@@ -452,14 +450,14 @@ const StatusUpload = ({ onClose, onUploaded }) => {
       {/* ── Top Bar (Editor Tools) ────────────────────────────────── */}
       <div style={S.topBar}>
         <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X /></button>
-        
+
         {selectedMusic && (
           <div className="flex-1 px-4 animate-in slide-in-from-left-4 duration-300">
-             <div className="bg-primary/20 text-primary px-3 py-1.5 rounded-full flex items-center gap-2 max-w-[200px]">
-               <Music2 size={14} className="animate-pulse" />
-               <span className="text-xs font-bold truncate">{selectedMusic.title}</span>
-               <X size={14} className="cursor-pointer hover:text-white" onClick={() => setSelectedMusic(null)} />
-             </div>
+            <div className="bg-primary/20 text-primary px-3 py-1.5 rounded-full flex items-center gap-2 max-w-[200px]">
+              <Music2 size={14} className="animate-pulse" />
+              <span className="text-xs font-bold truncate">{selectedMusic.title}</span>
+              <X size={14} className="cursor-pointer hover:text-white" onClick={() => setSelectedMusic(null)} />
+            </div>
           </div>
         )}
 
@@ -492,7 +490,7 @@ const StatusUpload = ({ onClose, onUploaded }) => {
         {/* Caption Overlay Input */}
         {preview && (
           <div className="absolute bottom-[20%] left-0 right-0 px-8 text-center">
-            <textarea 
+            <textarea
               className="bg-black/30 backdrop-blur-md border border-white/10 rounded-2xl w-full p-4 text-center text-lg font-medium outline-none placeholder:text-white/30 resize-none transition-all focus:bg-black/50"
               placeholder="Add a caption..."
               rows={2}
@@ -507,14 +505,14 @@ const StatusUpload = ({ onClose, onUploaded }) => {
       <div style={S.bottomPanel}>
         <div className="flex items-center justify-between gap-4">
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={() => setShowAudienceMenu(true)}
               className="px-4 h-11 bg-white/10 hover:bg-white/20 rounded-full flex items-center gap-2 transition-all active:scale-95"
             >
               <Users size={18} />
               <span className="text-sm font-bold">{audience.type === 'all' ? 'Contacts' : 'Private'}</span>
             </button>
-            <button 
+            <button
               onClick={() => setShowDurationMenu(true)}
               className="size-11 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-all active:scale-95 relative"
             >
@@ -523,7 +521,7 @@ const StatusUpload = ({ onClose, onUploaded }) => {
             </button>
           </div>
 
-          <button 
+          <button
             onClick={handleSubmit}
             disabled={isUploading || !preview}
             className="h-12 px-8 bg-success hover:bg-success/90 disabled:opacity-50 disabled:grayscale rounded-full flex items-center gap-3 transition-all active:scale-95 shadow-xl shadow-success/20"
@@ -540,7 +538,7 @@ const StatusUpload = ({ onClose, onUploaded }) => {
       {showAudienceMenu && renderAudiencePicker()}
 
       <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={handleFileChange} className="hidden" />
-      
+
       <style>{`
         @keyframes slideUp {
           from { transform: translateY(100%); }

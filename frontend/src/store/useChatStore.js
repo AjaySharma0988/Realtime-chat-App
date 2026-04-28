@@ -10,7 +10,9 @@ export const useChatStore = create((set, get) => ({
   selectedUser: null,
   isUsersLoading: false,
   isMessagesLoading: false,
+  isFetchingMore: false,
   isSendingMessage: false,
+  hasMore: true,
 
   getUsers: async () => {
     const cachedUsers = await idb.getUsers();
@@ -34,18 +36,24 @@ export const useChatStore = create((set, get) => ({
   },
 
   getMessages: async (userId) => {
-    set({ messages: [], isMessagesLoading: true });
+    set({ messages: [], isMessagesLoading: true, hasMore: true });
 
     const cachedMsgs = await idb.getMessages(userId);
     if (cachedMsgs && cachedMsgs.length > 0) {
+      // For now, if we have cache, we still fetch the latest 10 to ensure fresh data
       set({ messages: cachedMsgs, isMessagesLoading: false });
     }
 
     try {
-      const res = await axiosInstance.get(`/messages/${userId}`);
-      set({ messages: res.data });
+      const res = await axiosInstance.get(`/messages/${userId}?limit=10`);
+      set({ 
+        messages: res.data, 
+        hasMore: res.data.length === 10 
+      });
 
       const authUserId = useAuthStore.getState().authUser?._id;
+      // We might want to keep IDB simple for now or merge carefully. 
+      // For simplicity in this task, let's just save the latest 10.
       idb.saveMessages(res.data, authUserId);
 
       // If we fetch messages, we have "seen" them.
@@ -64,6 +72,34 @@ export const useChatStore = create((set, get) => ({
       }
     } finally {
       if (get().isMessagesLoading) set({ isMessagesLoading: false });
+    }
+  },
+
+  loadMoreMessages: async (userId) => {
+    const { messages, isFetchingMore, hasMore } = get();
+    if (isFetchingMore || !hasMore || messages.length === 0) return;
+
+    set({ isFetchingMore: true });
+
+    try {
+      const oldestMessageId = messages[0]._id;
+      const res = await axiosInstance.get(`/messages/${userId}?before=${oldestMessageId}&limit=10`);
+      
+      const newMessages = res.data;
+      if (newMessages.length < 10) {
+        set({ hasMore: false });
+      }
+
+      set((state) => ({
+        messages: [...newMessages, ...state.messages]
+      }));
+
+      return newMessages.length;
+    } catch (error) {
+      console.error("Error loading more messages:", error);
+      toast.error("Failed to load older messages");
+    } finally {
+      set({ isFetchingMore: false });
     }
   },
 
@@ -201,6 +237,12 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
+  clearAllUnreads: () => {
+    set((state) => ({
+      users: state.users.map((u) => ({ ...u, unreadCount: 0 }))
+    }));
+  },
+
   deleteChat: async (userId) => {
     try {
       await axiosInstance.delete(`/messages/${userId}`);
@@ -269,11 +311,84 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
+  subscribeToGlobalEvents: () => {
+    const socket = useAuthStore.getState().socket;
+    if (!socket) return;
+
+    socket.off("profileUpdated");
+    socket.off("newMessage");
+
+    socket.on("profileUpdated", (updatedUser) => {
+      set((state) => ({
+        users: state.users.map((u) => u._id === updatedUser._id ? { ...u, ...updatedUser } : u),
+        selectedUser: state.selectedUser?._id === updatedUser._id ? { ...state.selectedUser, ...updatedUser } : state.selectedUser
+      }));
+    });
+
+    socket.on("profilePhotoPrivacyUpdated", ({ userId }) => {
+      // Re-fetch users to get updated privacy filtered data
+      get().getUsers();
+    });
+
+    socket.on("newMessage", (newMessage) => {
+      // (Keep existing logic but ensure it updates unread counts for sidebar)
+      const { selectedUser } = get();
+      const me = useAuthStore.getState().authUser?._id;
+      const isCurrentlyChatting = selectedUser && selectedUser._id === newMessage.senderId;
+      const isTabHidden = document.hidden;
+
+      let newStatus = newMessage.status;
+      if (isCurrentlyChatting && !isTabHidden) {
+        axiosInstance.put(`/messages/mark-read/${newMessage.senderId}`).catch(() => { });
+        newStatus = "seen";
+      } else if (newMessage.receiverId === me) {
+        socket.emit("mark-delivered", { messageId: newMessage._id, senderId: newMessage.senderId });
+      }
+
+      const messageToStore = { ...newMessage, status: newStatus };
+      idb.saveMessage(messageToStore, me);
+
+      if (isCurrentlyChatting) {
+        set((state) => ({
+          messages: state.messages.some(m => m._id === messageToStore._id) ? state.messages : [...state.messages, messageToStore]
+        }));
+      }
+
+      set((state) => ({
+        users: state.users.map((u) => {
+          if (u._id === newMessage.senderId) {
+            return {
+              ...u,
+              lastMessage: messageToStore,
+              unreadCount: (isCurrentlyChatting && !isTabHidden) ? 0 : (u.unreadCount || 0) + 1
+            };
+          }
+          if (u._id === newMessage.receiverId) {
+            return { ...u, lastMessage: messageToStore };
+          }
+          return u;
+        }).sort((a, b) => {
+          const aTime = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
+          const bTime = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
+          return bTime - aTime;
+        })
+      }));
+    });
+  },
+
+  unsubscribeFromGlobalEvents: () => {
+    const socket = useAuthStore.getState().socket;
+    if (!socket) return;
+    socket.off("profileUpdated");
+    socket.off("profilePhotoPrivacyUpdated");
+    socket.off("newMessage");
+  },
+
   subscribeToMessages: () => {
     const socket = useAuthStore.getState().socket;
-
+    if (!socket) return;
+    
     // IMPORTANT: Clear any existing listeners to prevent duplication
-    socket.off("newMessage");
     socket.off("messageDelivered");
     socket.off("messagesSeen");
     socket.off("chatDeleted");
@@ -281,63 +396,6 @@ export const useChatStore = create((set, get) => ({
     socket.off("messagesDeletedForEveryone");
     socket.off("messageEdited");
     socket.off("messageReacted");
-
-    socket.on("newMessage", (newMessage) => {
-      console.log("[Socket] Received newMessage:", newMessage._id);
-      const { selectedUser } = get();
-      const isCurrentlyChatting = selectedUser && selectedUser._id === newMessage.senderId;
-      const me = useAuthStore.getState().authUser?._id;
-
-      let newStatus = newMessage.status;
-
-      if (isCurrentlyChatting) {
-        // Mark as read immediately since we are looking at it
-        axiosInstance.put(`/messages/mark-read/${newMessage.senderId}`).catch(() => { });
-        newStatus = "seen";
-      } else {
-        // We received it but aren't looking at the chat -> it is delivered
-        if (newMessage.receiverId === me) {
-          socket.emit("mark-delivered", {
-            messageId: newMessage._id,
-            senderId: newMessage.senderId
-          });
-        }
-      }
-
-      const messageToStore = { ...newMessage, status: newStatus };
-      idb.saveMessage(messageToStore, me); // Save to local IndexedDB
-
-      if (isCurrentlyChatting) {
-        set((state) => {
-          // Prevent UI duplication: don't append if message already exists
-          if (state.messages.some((m) => m._id === messageToStore._id)) return state;
-          return { messages: [...state.messages, messageToStore] };
-        });
-      }
-
-      set((state) => {
-        const senderId = newMessage.senderId;
-        return {
-          users: state.users.map((u) => {
-            if (u._id === senderId) {
-              return {
-                ...u,
-                lastMessage: messageToStore,
-                unreadCount: isCurrentlyChatting ? 0 : (u.unreadCount || 0) + 1
-              };
-            }
-            if (u._id === newMessage.receiverId) {
-              return { ...u, lastMessage: messageToStore };
-            }
-            return u;
-          }).sort((a, b) => {
-            const aTime = a.lastMessage ? new Date(a.lastMessage.createdAt).getTime() : 0;
-            const bTime = b.lastMessage ? new Date(b.lastMessage.createdAt).getTime() : 0;
-            return bTime - aTime;
-          })
-        };
-      });
-    });
 
     socket.on("messageDelivered", ({ messageId }) => {
       // The other person's device received our message
@@ -400,7 +458,6 @@ export const useChatStore = create((set, get) => ({
         if (messageIds.includes(m._id)) idb.saveMessage(m, me._id);
       });
     });
-
     socket.on("messageEdited", (updatedMsg) => {
       set({
         messages: get().messages.map((m) =>
@@ -420,11 +477,13 @@ export const useChatStore = create((set, get) => ({
 
   unsubscribeFromMessages: () => {
     const socket = useAuthStore.getState().socket;
-    socket.off("newMessage");
+    if (!socket) return;
+
     socket.off("messageDelivered");
     socket.off("messagesSeen");
     socket.off("chatDeleted");
     socket.off("messagesDeleted");
+    socket.off("messagesDeletedForEveryone");
     socket.off("messageEdited");
     socket.off("messageReacted");
   },

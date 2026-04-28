@@ -2,6 +2,7 @@ import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
+import { filterUserPrivacy } from "../lib/privacy.js";
 
 export const getUsersForSidebar = async (req, res) => {
   try {
@@ -53,27 +54,42 @@ export const getUsersForSidebar = async (req, res) => {
       { $sort: { "lastMessage.createdAt": -1, fullName: 1 } }
     ]);
 
-    res.status(200).json(usersWithStats);
+    // Apply privacy filters
+    const filteredUsers = usersWithStats.map(u => filterUserPrivacy(loggedInUserId, u));
+
+    res.status(200).json(filteredUsers);
   } catch (error) {
     console.error("Error in getUsersForSidebar:", error.message);
     res.status(500).json({ error: "Internal server error" });
   }
 };
 
-// ── GET: Fetch messages — replyTo is embedded, no populate needed ─────────
+// ── GET: Fetch messages with cursor-based pagination ─────────
 export const getMessages = async (req, res) => {
   try {
     const { id: userToChatId } = req.params;
+    const { limit = 10, before } = req.query;
     const myId = req.user._id;
-    const messages = await Message.find({
+
+    const query = {
       $or: [
         { senderId: myId, receiverId: userToChatId },
         { senderId: userToChatId, receiverId: myId },
       ],
       deletedFor: { $ne: myId }
-    }).sort({ createdAt: 1 });
+    };
 
-    res.status(200).json(messages);
+    // Cursor-based pagination: fetch messages older than the 'before' ID
+    if (before) {
+      query._id = { $lt: before };
+    }
+
+    const messages = await Message.find(query)
+      .sort({ _id: -1 }) // Get latest first using ID
+      .limit(parseInt(limit));
+
+    // Reverse to return in chronological order (oldest -> newest)
+    res.status(200).json(messages.reverse());
   } catch (error) {
     console.log("Error in getMessages:", error.message);
     res.status(500).json({ error: "Internal server error" });

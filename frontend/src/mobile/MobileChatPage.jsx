@@ -8,17 +8,19 @@ import {
   Image as ImageIcon, Camera, MapPin, User, FileText, BarChart2, Calendar,
   Sparkles, X, Trash2, Search,
   Info, BellOff, Timer, Heart, Bookmark, Flag, Ban, Eraser, CheckSquare,
+  ChevronDown, Reply, Forward, Copy, Star, Plus,
 } from "lucide-react";
 import { MessageBubble } from "../components/MessageBubble";
 import MessageSkeleton from "../components/skeletons/MessageSkeleton";
 import MobileDropdownMenu from "../components/mobile/MobileDropdownMenu";
 import EmojiPicker from "../components/EmojiPicker";
+import EmojiReactionPanel from "../components/EmojiReactionPanel";
 import CameraOverlay from "../components/CameraOverlay";
 import { navigateMobile } from "./MobileLayout";
 import toast from "react-hot-toast";
 
 const MobileChatPage = () => {
-  const { messages, getMessages, isMessagesLoading, selectedUser, setSelectedUser, subscribeToMessages, unsubscribeFromMessages, sendMessage } = useChatStore();
+  const { messages, getMessages, isMessagesLoading, isFetchingMore, hasMore, loadMoreMessages, selectedUser, setSelectedUser, subscribeToMessages, unsubscribeFromMessages, sendMessage } = useChatStore();
   const { authUser, onlineUsers } = useAuthStore();
   const { startCall } = useCallStore();
   const { chatPattern, customBgImage } = useThemeStore();
@@ -31,8 +33,17 @@ const MobileChatPage = () => {
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [cameraImage, setCameraImage] = useState(null);
   const fileInputRef = useRef(null);
+  const scrollContainerRef = useRef(null);
   const messageEndRef = useRef(null);
   const menuRef = useRef(null);
+  const prevScrollHeightRef = useRef(0);
+  const [showScrollButton, setShowScrollButton] = useState(false);
+  
+  const [selectedMessages, setSelectedMessages] = useState([]);
+  const [showReactionUI, setShowReactionUI] = useState(false);
+  const [replyToMsg, setReplyToMsg] = useState(null);
+  const longPressTimer = useRef(null);
+  const inputRef = useRef(null);
 
   // Close menu on outside click
   useEffect(() => {
@@ -53,30 +64,170 @@ const MobileChatPage = () => {
     return () => unsubscribeFromMessages();
   }, [selectedUser?._id, getMessages, subscribeToMessages, unsubscribeFromMessages]);
 
-  useEffect(() => {
-    if (messageEndRef.current && messages?.length) {
-      messageEndRef.current.scrollIntoView({ behavior: "smooth" });
+  // Handle scroll (Pagination + Scroll Button)
+  const handleScroll = async (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    if (scrollTop === 0 && hasMore && !isFetchingMore && messages.length > 0) {
+      prevScrollHeightRef.current = scrollHeight;
+      await loadMoreMessages(selectedUser._id);
     }
-  }, [messages]);
+
+    // Scroll Button: Show if not at bottom
+    const isAtBottom = scrollHeight - scrollTop <= clientHeight + 150;
+    setShowScrollButton(!isAtBottom);
+  };
+
+  const scrollToBottom = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  };
+
+  // Maintain scroll position when messages are prepended
+  useEffect(() => {
+    if (isFetchingMore) return;
+
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    if (prevScrollHeightRef.current > 0) {
+      // We just loaded older messages, maintain scroll position
+      const scrollDiff = container.scrollHeight - prevScrollHeightRef.current;
+      container.scrollTop = scrollDiff;
+      prevScrollHeightRef.current = 0;
+    } else {
+      // If it's a new message (appended at bottom), auto-scroll only if at bottom or if I sent it
+      const lastMessage = messages[messages.length - 1];
+      const isMyMessage = lastMessage?.senderId === authUser._id;
+      const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 150;
+      
+      if (isAtBottom || isMyMessage) {
+        messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        setShowScrollButton(false);
+      } else {
+        setShowScrollButton(true);
+      }
+    }
+  }, [messages, isFetchingMore]);
+
+  // Initial load auto-scroll
+  useEffect(() => {
+    if (!isMessagesLoading && messages.length > 0 && !prevScrollHeightRef.current) {
+      messageEndRef.current?.scrollIntoView({ behavior: "auto" });
+    }
+  }, [isMessagesLoading, selectedUser._id]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
     const finalImage = cameraImage || imagePreview;
     if (!text.trim() && !finalImage) return;
     
-    const msg = { text: text.trim(), image: finalImage };
+    const msg = { 
+      text: text.trim(), 
+      image: finalImage,
+      replyTo: replyToMsg ? {
+        messageId: replyToMsg._id,
+        text: replyToMsg.text,
+        senderName: replyToMsg.senderId === authUser._id ? "You" : selectedUser.fullName,
+        image: replyToMsg.image
+      } : null
+    };
     
     setText("");
     setImagePreview(null);
     setCameraImage(null);
     setIsCameraOpen(false);
     setShowAttachment(false);
+    setReplyToMsg(null);
 
     try {
       await sendMessage(msg);
     } catch (error) {
       toast.error("Failed to send message");
     }
+  };
+
+  const handleLongPress = (message) => {
+    if (showReactionUI || selectedMessages.length > 0) return;
+    longPressTimer.current = setTimeout(() => {
+      setSelectedMessages([message]);
+      setShowReactionUI(true);
+      if (navigator.vibrate) navigator.vibrate(50);
+    }, 600);
+  };
+
+  const handleReleasePress = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+  };
+
+  const handleSwipeReply = (message) => {
+    if (selectedMessages.length > 0) return;
+    setReplyToMsg(message);
+    if (navigator.vibrate) navigator.vibrate(40);
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 100);
+  };
+
+  const handleMessageClick = (message) => {
+    if (selectedMessages.length > 0) {
+      // Always hide reaction UI when continuing selection
+      setShowReactionUI(false);
+      
+      const isAlreadySelected = selectedMessages.some(m => m._id === message._id);
+      if (isAlreadySelected) {
+        setSelectedMessages(prev => prev.filter(m => m._id !== message._id));
+      } else {
+        setSelectedMessages(prev => [...prev, message]);
+      }
+    }
+  };
+
+  const handleReaction = async (emoji) => {
+    if (selectedMessages.length !== 1) return;
+    const msg = selectedMessages[0];
+    try {
+      await useChatStore.getState().reactToMessage(msg._id, emoji);
+      setSelectedMessages([]);
+      setShowReactionUI(false);
+    } catch (error) {
+      toast.error("Failed to react");
+    }
+  };
+
+  const handleAction = async (action) => {
+    if (selectedMessages.length === 0) return;
+    
+    switch (action) {
+      case "reply":
+        if (selectedMessages.length === 1) setReplyToMsg(selectedMessages[0]);
+        break;
+      case "copy":
+        const combinedText = selectedMessages
+          .map(m => m.text)
+          .filter(Boolean)
+          .join("\n");
+        if (combinedText) {
+          navigator.clipboard.writeText(combinedText);
+          toast.success("Copied!");
+        }
+        break;
+      case "delete":
+        const ids = selectedMessages.map(m => m._id);
+        await useChatStore.getState().bulkDeleteMessages(ids, false);
+        break;
+      case "forward":
+        toast("Forwarding multiple messages not yet implemented", { icon: "ℹ️" });
+        break;
+      case "star":
+        toast("Starred successfully", { icon: "⭐" });
+        break;
+    }
+    setSelectedMessages([]);
+    setShowReactionUI(false);
   };
 
   const handleImageChange = (e) => {
@@ -191,31 +342,86 @@ const MobileChatPage = () => {
             onRetake={() => setCameraImage(null)}
           />
         ) : (
-          <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 relative z-10">
+          <div 
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto px-4 py-4 space-y-2 relative z-10"
+          >
+            {/* Pagination Loader */}
+            {isFetchingMore && (
+              <div className="flex justify-center py-2">
+                <span className="loading loading-spinner loading-sm text-primary/60"></span>
+              </div>
+            )}
+            
             {isMessagesLoading ? (
               <MessageSkeleton />
             ) : (
               messages.map((message, idx) => {
                  const isSent = message.senderId === authUser._id;
                  return (
-                   <div key={message._id} ref={idx === messages.length - 1 ? messageEndRef : null}>
-                     <MessageBubble 
-                       message={message} 
-                       isSent={isSent} 
-                       selectedUser={selectedUser}
-                     />
-                   </div>
+                    <div key={message._id} ref={idx === messages.length - 1 ? messageEndRef : null}>
+                      <MessageBubble 
+                        message={message} 
+                        isSent={isSent} 
+                        selectedUser={selectedUser}
+                        isSelected={selectedMessages.some(m => m._id === message._id)}
+                        isSelectMode={selectedMessages.length > 0}
+                        onLongPress={handleLongPress}
+                        onReleasePress={handleReleasePress}
+                        onToggleSelect={() => handleMessageClick(message)}
+                        onSwipeReply={handleSwipeReply}
+                        onOpenMobileReaction={(msg) => {
+                          setSelectedMessages([msg]);
+                          setShowReactionUI(true);
+                        }}
+                      />
+                    </div>
                  );
               })
             )}
           </div>
         )}
 
+        {/* Scroll to Bottom Button */}
+        {showScrollButton && (
+          <button
+            onClick={scrollToBottom}
+            className="absolute bottom-32 left-1/2 -translate-x-1/2 size-11 rounded-full bg-[#202c33] text-white shadow-xl border border-white/10 flex items-center justify-center hover:bg-[#2a3942] transition-all z-50 animate-in fade-in zoom-in slide-in-from-bottom-4 duration-200"
+            aria-label="Scroll to bottom"
+          >
+            <ChevronDown className="size-6" />
+          </button>
+        )}
+
       {/* Input Section */}
       {(!isCameraOpen || cameraImage) && (
-        <div className={`p-2 flex flex-col gap-2 relative z-20 transition-colors ${isCameraOpen && cameraImage ? 'bg-[#0B141A]' : 'bg-transparent'}`}>
-        {imagePreview && (
-          <div className="p-4 bg-base-300 rounded-2xl border border-base-content/10 animate-in slide-in-from-bottom-2">
+        <div className={`p-2 flex flex-col relative z-20 transition-colors ${isCameraOpen && cameraImage ? 'bg-[#0B141A]' : 'bg-transparent'}`}>
+          {/* Integrated Reply Preview */}
+          {replyToMsg && (
+            <div className="mx-2 mb-2 bg-white/5 rounded-xl overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
+              <div className="flex items-center gap-3 p-3 border-l-4 border-[#25D366] bg-black/20">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] font-bold text-[#25D366] mb-0.5">
+                    {replyToMsg.senderId === authUser._id ? "You" : selectedUser.fullName}
+                  </p>
+                  <p className="text-[13px] text-white/80 truncate">
+                    {replyToMsg.image ? "📷 Photo" : replyToMsg.text}
+                  </p>
+                </div>
+                <button 
+                  type="button"
+                  onClick={() => setReplyToMsg(null)} 
+                  className="p-1 rounded-full hover:bg-white/10 text-white/40"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {imagePreview && (
+            <div className="p-4 bg-base-300 rounded-2xl border border-base-content/10 mb-2">
             <div className="relative inline-block">
               <img src={imagePreview} alt="" className="h-40 w-auto rounded-xl object-cover" />
               <button onClick={() => setImagePreview(null)} className="absolute -top-2 -right-2 bg-error text-error-content rounded-full p-1 shadow-lg">
@@ -243,6 +449,7 @@ const MobileChatPage = () => {
               onSelect={(emoji) => setText(prev => prev + emoji)} 
             />
             <input 
+              ref={inputRef}
               placeholder="Message"
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -296,6 +503,62 @@ const MobileChatPage = () => {
           className="fixed inset-0 bg-black/20 z-[65]" 
           onClick={() => setShowAttachment(false)}
         />
+      )}
+
+      {/* Mobile Reaction Overlay */}
+      <ReactionOverlay 
+        isOpen={selectedMessages.length > 0}
+        onClose={() => { setSelectedMessages([]); setShowReactionUI(false); }}
+        onReact={handleReaction}
+        onAction={handleAction}
+        selectedCount={selectedMessages.length}
+        showEmojiPanel={showReactionUI && selectedMessages.length === 1}
+      />
+    </div>
+  );
+};
+
+// ── Mobile Overlays ─────────────────────────────────────────────────────────
+
+const ReactionOverlay = ({ isOpen, onClose, onReact, selectedCount, onAction, showEmojiPanel }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[200] animate-in fade-in duration-200 pointer-events-none">
+      {/* Dimmed Background - pointer-events-none to allow selecting other messages */}
+      <div className="absolute inset-0 bg-black/10 pointer-events-none" />
+      
+      {/* Top Action Bar */}
+      <div className="absolute top-0 inset-x-0 h-16 bg-[#111b21] flex items-center justify-between px-6 z-10 shadow-lg animate-in slide-in-from-top duration-300 pointer-events-auto">
+        <div className="flex items-center gap-4">
+          <button onClick={onClose} className="text-white/70 active:scale-90 transition-transform">
+            <ArrowLeft className="size-6" />
+          </button>
+          <span className="text-white font-bold text-lg">{selectedCount}</span>
+        </div>
+        <div className="flex items-center gap-6 text-white/90">
+          {selectedCount === 1 && (
+            <button onClick={() => onAction("reply")} className="active:scale-90 transition-transform"><Reply className="size-6" /></button>
+          )}
+          <button onClick={() => onAction("star")} className="active:scale-90 transition-transform"><Star className="size-6" /></button>
+          <button onClick={() => onAction("copy")} className="active:scale-90 transition-transform"><Copy className="size-6" /></button>
+          <button onClick={() => onAction("forward")} className="active:scale-90 transition-transform"><Forward className="size-6" /></button>
+          <button onClick={() => onAction("delete")} className="text-error active:scale-90 transition-transform"><Trash2 className="size-6" /></button>
+        </div>
+      </div>
+
+      {/* Emoji Panel (Centered) - Only shown for first selection */}
+      {showEmojiPanel && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full px-4 flex justify-center z-20 pointer-events-auto">
+          <EmojiReactionPanel 
+            isOpen={true}
+            onClose={() => {}} // Controlled by overlay
+            onSelect={onReact}
+            isSent={false}
+            showArrow={false}
+            className="relative scale-110"
+          />
+        </div>
       )}
     </div>
   );

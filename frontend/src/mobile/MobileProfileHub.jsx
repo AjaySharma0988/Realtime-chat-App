@@ -6,16 +6,17 @@ import {
   MessageCircle, Phone, Star, Clock, Trash2, AlertTriangle, X as CloseIcon,
 } from "lucide-react";
 import ImageCropModal from "../components/ImageCropModal";
+import PrivacyCustomUsersModal from "../components/PrivacyCustomUsersModal";
 import { useNavigate } from "react-router-dom";
 import { navigateMobile } from "./MobileLayout";
 
 /* ── Sidebar tabs ── */
 const TABS = [
-  { id: "profile",       icon: User,         label: "My Profile"   },
-  { id: "privacy",       icon: Lock,         label: "Privacy"      },
-  { id: "notifications", icon: Bell,         label: "Notifications"},
-  { id: "devices",       icon: Smartphone,   label: "Devices"      },
-  { id: "security",      icon: Shield,       label: "Security"     },
+  { id: "profile", icon: User, label: "My Profile" },
+  { id: "privacy", icon: Lock, label: "Privacy" },
+  { id: "notifications", icon: Bell, label: "Notifications" },
+  { id: "devices", icon: Smartphone, label: "Devices" },
+  { id: "security", icon: Shield, label: "Security" },
 ];
 
 /* ── Small reusable row ── */
@@ -71,14 +72,21 @@ const StatBadge = ({ icon: Icon, label, value }) => (
 const ProfilePanelContent = ({
   tab, authUser, selectedImg, editingName, nameValue,
   setNameValue, setEditingName, handleSaveName,
+  editingAbout, aboutValue, setAboutValue, setEditingAbout, handleSaveAbout,
   isUpdatingProfile, isCropLoading, handleFileSelect,
   onDeleteClick,
+  photoVisibility, onOpenPhotoModal,
 }) => {
-  const [privacy, setPrivacy] = useState({ readReceipts: true, onlineStatus: true, profilePhoto: true });
-  const [notifs, setNotifs]   = useState({ messages: true, groups: true, sounds: true, preview: true });
-
+  const [notifs, setNotifs] = useState({ messages: true, groups: true, sounds: true, preview: true });
+  const VISIBILITY_LABELS = { everyone: "Everyone", nobody: "Nobody", custom: "Custom" };
   const avatarSrc = selectedImg || authUser?.profilePic || "/avatar.png";
-  const joinDate  = authUser?.createdAt?.split("T")[0] || "—";
+  const joinDate = authUser?.createdAt?.split("T")[0] || "—";
+
+  const getPhotoSubLabel = () => {
+    if (photoVisibility !== "custom") return VISIBILITY_LABELS[photoVisibility] || "Everyone";
+    const count = (authUser?.privacy?.allowedUsers || []).length;
+    return `Custom (${count} selected)`;
+  };
 
   switch (tab) {
     case "profile": return (
@@ -118,12 +126,18 @@ const ProfilePanelContent = ({
                   value={nameValue}
                   onChange={e => setNameValue(e.target.value)}
                   onKeyDown={e => {
-                    if (e.key === "Enter")  handleSaveName();
+                    if (e.key === "Enter") handleSaveName();
                     if (e.key === "Escape") { setEditingName(false); setNameValue(authUser?.fullName || ""); }
                   }}
                   autoFocus
                 />
-                <button onClick={handleSaveName} className="p-1.5 bg-success/10 rounded-full hover:bg-success/20 text-success"><Check className="size-4" /></button>
+                <button
+                  onClick={handleSaveName}
+                  disabled={isUpdatingProfile}
+                  className="p-1.5 bg-success/10 rounded-full hover:bg-success/20 text-success"
+                >
+                  {isUpdatingProfile ? <div className="size-4 border-2 border-success border-t-transparent rounded-full animate-spin" /> : <Check className="size-4" />}
+                </button>
                 <button onClick={() => { setEditingName(false); setNameValue(authUser?.fullName || ""); }} className="p-1.5 bg-base-200 rounded-full hover:bg-base-300 text-base-content/60"><X className="size-4" /></button>
               </div>
             ) : (
@@ -138,20 +152,64 @@ const ProfilePanelContent = ({
           </div>
         </div>
 
+        {/* About / Bio section */}
+        <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest">About</h3>
+            {!editingAbout && (
+              <button onClick={() => setEditingAbout(true)} className="p-1.5 rounded-full hover:bg-base-200 transition-colors">
+                <Edit3 className="size-4 text-base-content/40" />
+              </button>
+            )}
+          </div>
+
+          {editingAbout ? (
+            <div className="space-y-3">
+              <textarea
+                className="textarea textarea-bordered w-full bg-base-200 text-sm resize-none h-24 focus:border-primary"
+                value={aboutValue}
+                onChange={e => setAboutValue(e.target.value)}
+                placeholder="Tell us about yourself..."
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => { setEditingAbout(false); setAboutValue(authUser?.about || ""); }}
+                  className="btn btn-ghost btn-sm text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveAbout}
+                  disabled={isUpdatingProfile}
+                  className="btn btn-primary btn-sm text-xs gap-2"
+                >
+                  {isUpdatingProfile && <div className="size-3 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  Save
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-base-content leading-relaxed">
+              {authUser?.about || "Hey there! I am using Chatty."}
+            </p>
+          )}
+        </div>
+
         {/* Stats row */}
         <div className="flex gap-2">
-          <StatBadge icon={MessageCircle} label="Messages"  value="—"   />
-          <StatBadge icon={Phone}         label="Calls"     value="—"   />
-          <StatBadge icon={Star}          label="Starred"   value="—"   />
-          <StatBadge icon={Clock}         label="Joined"    value={joinDate} />
+          <StatBadge icon={MessageCircle} label="Messages" value="—" />
+          <StatBadge icon={Phone} label="Calls" value="—" />
+          <StatBadge icon={Star} label="Starred" value="—" />
+          <StatBadge icon={Clock} label="Joined" value={joinDate} />
         </div>
 
         {/* Account info card */}
         <div className="bg-base-200/50 rounded-3xl p-5 border border-base-300 shadow-sm">
           <h3 className="text-[10px] font-bold text-base-content/50 uppercase tracking-widest mb-2">Account info</h3>
-          <InfoRow icon={User}     label="Full name"    value={authUser?.fullName} />
-          <InfoRow icon={Mail}     label="Email"        value={authUser?.email}    />
-          <InfoRow icon={Calendar} label="Member since" value={joinDate}           />
+          <InfoRow icon={User} label="Full name" value={authUser?.fullName} />
+          <InfoRow icon={Mail} label="Email" value={authUser?.email} />
+          <InfoRow icon={Calendar} label="Member since" value={joinDate} />
         </div>
       </div>
     );
@@ -162,15 +220,23 @@ const ProfilePanelContent = ({
         <section>
           <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Who can see my info</h3>
           <NavRow label="Last seen &amp; online" sub="Everyone" />
-          <NavRow label="Profile photo"          sub="Everyone" />
-          <NavRow label="About"                  sub="Everyone" />
-          <NavRow label="Status"                 sub="My contacts" />
+          <button
+            onClick={onOpenPhotoModal}
+            className="w-full flex items-center gap-4 py-3.5 border-b border-base-300 last:border-0 hover:bg-base-200 -mx-4 px-4 transition-colors"
+          >
+            <div className="flex-1 text-left">
+              <p className="text-sm text-base-content">Profile photo</p>
+              <p className="text-xs text-base-content/50 mt-0.5">{getPhotoSubLabel()}</p>
+            </div>
+            <ChevronRight className="size-4 text-base-content/30" />
+          </button>
+          <NavRow label="About" sub="Everyone" />
+          <NavRow label="Status" sub="My contacts" />
         </section>
         <section>
           <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Messaging</h3>
-          <ToggleRow label="Read receipts"  sub="Send/receive blue ticks"          enabled={privacy.readReceipts}  onChange={e => setPrivacy(p => ({ ...p, readReceipts: e.target.checked }))} />
-          <ToggleRow label="Online status"  sub="Let others see when you're online" enabled={privacy.onlineStatus}  onChange={e => setPrivacy(p => ({ ...p, onlineStatus: e.target.checked }))} />
-          <ToggleRow label="Profile photo"  sub="Show profile photo to contacts"   enabled={privacy.profilePhoto}  onChange={e => setPrivacy(p => ({ ...p, profilePhoto: e.target.checked }))} />
+          <ToggleRow label="Read receipts" sub="Send/receive blue ticks" enabled={notifs.messages} onChange={e => setNotifs(n => ({ ...n, messages: e.target.checked }))} />
+          <ToggleRow label="Online status" sub="Let others see when you're online" enabled={notifs.groups} onChange={e => setNotifs(n => ({ ...n, groups: e.target.checked }))} />
         </section>
       </div>
     );
@@ -181,8 +247,8 @@ const ProfilePanelContent = ({
         <section>
           <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Alerts</h3>
           <ToggleRow label="Message notifications" enabled={notifs.messages} onChange={e => setNotifs(n => ({ ...n, messages: e.target.checked }))} />
-          <ToggleRow label="Group notifications"   enabled={notifs.groups}   onChange={e => setNotifs(n => ({ ...n, groups:   e.target.checked }))} />
-          <ToggleRow label="Notification sounds"   enabled={notifs.sounds}   onChange={e => setNotifs(n => ({ ...n, sounds:   e.target.checked }))} />
+          <ToggleRow label="Group notifications" enabled={notifs.groups} onChange={e => setNotifs(n => ({ ...n, groups: e.target.checked }))} />
+          <ToggleRow label="Notification sounds" enabled={notifs.sounds} onChange={e => setNotifs(n => ({ ...n, sounds: e.target.checked }))} />
           <ToggleRow label="Show message preview" sub="Show content in notifications" enabled={notifs.preview} onChange={e => setNotifs(n => ({ ...n, preview: e.target.checked }))} />
         </section>
       </div>
@@ -211,10 +277,10 @@ const ProfilePanelContent = ({
             </div>
           ))}
         </div>
-        <NavRow 
-          icon={Smartphone} 
-          label="Link a device" 
-          sub="Connect additional devices" 
+        <NavRow
+          icon={Smartphone}
+          label="Link a device"
+          sub="Connect additional devices"
           onClick={() => navigateMobile.fn?.("linkedDevices")}
         />
       </div>
@@ -225,9 +291,9 @@ const ProfilePanelContent = ({
         <SectionTitle title="Security" />
         <section>
           <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Authentication</h3>
-          <NavRow icon={Lock}   label="Two-step verification"  sub="Add an extra layer of security" />
-          <NavRow icon={Shield} label="Change password"        sub="Update your login credentials"  />
-          <NavRow icon={Mail}   label="Change email"           sub="Update your registered email"   />
+          <NavRow icon={Lock} label="Two-step verification" sub="Add an extra layer of security" />
+          <NavRow icon={Shield} label="Change password" sub="Update your login credentials" />
+          <NavRow icon={Mail} label="Change email" sub="Update your registered email" />
         </section>
         <section>
           <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Danger zone</h3>
@@ -253,16 +319,44 @@ const ProfilePanelContent = ({
    Main Mobile Profile Hub
 ───────────────────────────────────────────────────────────────────────────── */
 const MobileProfileHub = ({ onBack }) => {
-  const { authUser, isUpdatingProfile, updateProfile, deleteAccount } = useAuthStore();
+  const { authUser, isUpdatingProfile, updateProfile, updatePrivacy, deleteAccount } = useAuthStore();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState(null); // null = show nav list
+  const [activeTab, setActiveTab] = useState(null);
   const [selectedImg, setSelectedImg] = useState(null);
   const [cropImageSrc, setCropImageSrc] = useState(null);
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState(authUser?.fullName || "");
+  const [editingAbout, setEditingAbout] = useState(false);
+  const [aboutValue, setAboutValue] = useState(authUser?.about || "");
   const [isCropLoading, setIsCropLoading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [photoVisibility, setPhotoVisibility] = useState(
+    authUser?.privacy?.profilePhotoVisibility || "everyone"
+  );
+
+  const PHOTO_OPTIONS = [
+    { label: "Everyone", value: "everyone" },
+    { label: "Nobody", value: "nobody" },
+    { label: "Custom", value: "custom" },
+  ];
+
+  const handlePhotoVisibilitySelect = async (value) => {
+    setShowPhotoModal(false);
+    if (value === "custom") {
+      setShowCustomModal(true);
+      return;
+    }
+    setPhotoVisibility(value);
+    await updatePrivacy({ profilePhotoVisibility: value });
+  };
+
+  const handleCustomSave = (selectedIds) => {
+    setPhotoVisibility("custom");
+    setShowCustomModal(false);
+  };
 
   const handleDeleteConfirm = async () => {
     await deleteAccount();
@@ -289,10 +383,25 @@ const MobileProfileHub = ({ onBack }) => {
   };
 
   const handleSaveName = async () => {
-    setEditingName(false);
-    if (nameValue !== authUser?.fullName) {
-      await updateProfile({ fullName: nameValue });
+    if (!nameValue.trim() || nameValue === authUser.fullName) {
+      setEditingName(false);
+      return;
     }
+    try {
+      await updateProfile({ fullName: nameValue });
+      setEditingName(false);
+    } catch { /* handled in store */ }
+  };
+
+  const handleSaveAbout = async () => {
+    if (aboutValue === authUser.about) {
+      setEditingAbout(false);
+      return;
+    }
+    try {
+      await updateProfile({ about: aboutValue });
+      setEditingAbout(false);
+    } catch { /* handled in store */ }
   };
 
   /* ── Detail view ── */
@@ -317,10 +426,17 @@ const MobileProfileHub = ({ onBack }) => {
             setNameValue={setNameValue}
             setEditingName={setEditingName}
             handleSaveName={handleSaveName}
+            editingAbout={editingAbout}
+            aboutValue={aboutValue}
+            setAboutValue={setAboutValue}
+            setEditingAbout={setEditingAbout}
+            handleSaveAbout={handleSaveAbout}
             isUpdatingProfile={isUpdatingProfile}
             isCropLoading={isCropLoading}
             handleFileSelect={handleFileSelect}
             onDeleteClick={() => setShowDeleteModal(true)}
+            photoVisibility={photoVisibility}
+            onOpenPhotoModal={() => setShowPhotoModal(true)}
           />
         </div>
 
@@ -361,6 +477,49 @@ const MobileProfileHub = ({ onBack }) => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Profile Photo Visibility Modal */}
+        {showPhotoModal && (
+          <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-base-100 rounded-t-3xl w-full max-w-lg shadow-2xl border-t border-base-300 animate-in slide-in-from-bottom-4 duration-200">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-lg font-bold text-base-content">Who can see my profile photo</h3>
+                  <button onClick={() => setShowPhotoModal(false)} className="p-2 rounded-full hover:bg-base-200 transition-colors">
+                    <CloseIcon className="size-5 text-base-content/40" />
+                  </button>
+                </div>
+                <div className="space-y-2 pb-safe">
+                  {PHOTO_OPTIONS.map(({ label, value }) => (
+                    <button
+                      key={value}
+                      onClick={() => handlePhotoVisibilitySelect(value)}
+                      className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all border ${photoVisibility === value
+                          ? "bg-primary/10 border-primary/30 text-primary"
+                          : "border-base-300 hover:bg-base-200 text-base-content"
+                        }`}
+                    >
+                      <div className={`size-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${photoVisibility === value ? "border-primary" : "border-base-content/30"
+                        }`}>
+                        {photoVisibility === value && <div className="size-2.5 rounded-full bg-primary" />}
+                      </div>
+                      <span className="text-sm font-medium">{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCustomModal && (
+          <PrivacyCustomUsersModal
+            onClose={() => setShowCustomModal(false)}
+            onSave={handleCustomSave}
+            initialSelected={authUser?.privacy?.allowedUsers || []}
+            mobileStyle={true}
+          />
         )}
       </div>
     );

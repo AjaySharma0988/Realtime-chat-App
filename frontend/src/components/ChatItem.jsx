@@ -107,6 +107,7 @@ const ChatItem = ({ user, isSelected }) => {
       <StatusAvatar 
         user={user} 
         statusCount={statusCount} 
+        isOnline={isOnline}
         onClick={(uid) => setViewingUserId(uid)}
       />
 
@@ -143,7 +144,7 @@ const ChatItem = ({ user, isSelected }) => {
             {PreviewIcon && <PreviewIcon className="size-3.5 flex-shrink-0" />}
             
             <span className="truncate">
-              {previewText || "Tap to chat"}
+              {previewText || user.about || "Tap to chat"}
             </span>
           </div>
 

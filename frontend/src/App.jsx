@@ -20,7 +20,9 @@ import { useThemeStore } from "./store/useThemeStore";
 import { useCallStore } from "./store/useCallStore";
 import { useAppStore } from "./store/useAppStore";
 import { useStatusStore } from "./store/useStatusStore";
-import { useEffect } from "react";
+import { useChatStore } from "./store/useChatStore";
+import { updateFaviconBadge } from "./utils/favicon";
+import { useEffect, useRef } from "react";
 
 import { Loader, RefreshCw, LifeBuoy, AlertCircle, LogOut } from "lucide-react";
 import { Toaster } from "react-hot-toast";
@@ -31,7 +33,15 @@ const App = () => {
   const { incomingCall, outgoingCall, activeCall, initBroadcastListener } = useCallStore();
   const { activeView, setActiveView } = useAppStore();
   const { fetchStatuses, subscribeToStatuses, unsubscribeFromStatuses, viewingUserId, getUserStatuses, setViewingUserId } = useStatusStore();
+  const { users, clearAllUnreads, subscribeToGlobalEvents, unsubscribeFromGlobalEvents } = useChatStore();
   const location = useLocation();
+
+  useEffect(() => {
+    if (authUser) {
+      subscribeToGlobalEvents();
+      return () => unsubscribeFromGlobalEvents();
+    }
+  }, [authUser, subscribeToGlobalEvents, unsubscribeFromGlobalEvents]);
 
   useEffect(() => {
     if (location.pathname === "/chats" && !activeView) {
@@ -62,6 +72,43 @@ const App = () => {
       document.removeEventListener("contextmenu", disableContextMenu);
     };
   }, []);
+  
+  // Handle Unread Count & Document Title
+  useEffect(() => {
+    const totalUnread = users.reduce((sum, user) => sum + (user.unreadCount || 0), 0);
+    const appName = "Chatty";
+
+    if (totalUnread > 0) {
+      document.title = `(${totalUnread}) ${appName}`;
+      updateFaviconBadge(totalUnread);
+    } else {
+      document.title = appName;
+      updateFaviconBadge(0);
+    }
+  }, [users, theme]);
+
+  // Clear unreads when tab is focused or visibility changes
+  useEffect(() => {
+    const handleFocus = () => {
+      if (users.some(u => u.unreadCount > 0)) {
+        clearAllUnreads();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden && users.some(u => u.unreadCount > 0)) {
+        clearAllUnreads();
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [clearAllUnreads, users]);
 
   // Start BroadcastChannel listener so main app clears call state when popup ends
   useEffect(() => {

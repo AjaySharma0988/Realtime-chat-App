@@ -1,10 +1,11 @@
 import React from "react";
+import { getProfilePicUrl } from "../lib/utils";
 
 /**
  * StatusAvatar — profile picture with a teal/segmented status ring.
  * Refined to match the provided high-fidelity reference image.
  */
-const StatusAvatar = ({ user, size = "size-12", statusCount = 0, onClick }) => {
+const StatusAvatar = ({ user, size = "size-12", statusCount = 0, isOnline = false, onClick }) => {
   const hasStatus = statusCount > 0;
   
   // Logic for segments
@@ -60,11 +61,13 @@ const StatusAvatar = ({ user, size = "size-12", statusCount = 0, onClick }) => {
     );
   };
 
+  const profileSrc = getProfilePicUrl(user);
+
   return (
     <div className={`relative flex-shrink-0 ${size}`}>
       {renderRing()}
       <img
-        src={user.profilePic || "/avatar.png"}
+        src={profileSrc}
         alt={user.fullName}
         onClick={(e) => {
           if (hasStatus && onClick) {
@@ -82,6 +85,12 @@ const StatusAvatar = ({ user, size = "size-12", statusCount = 0, onClick }) => {
            boxShadow: hasStatus ? "0 0 0 2px oklch(var(--b1))" : "none"
         }}
       />
+      {isOnline && (
+        <span 
+          className="absolute bottom-[1px] right-[1px] size-3 bg-success rounded-full ring-2 ring-base-100 z-10" 
+          title="Online"
+        />
+      )}
     </div>
   );
 };

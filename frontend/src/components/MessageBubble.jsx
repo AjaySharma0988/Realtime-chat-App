@@ -1,6 +1,6 @@
 import { Check, CheckCheck, Mic, Video, Phone, Clock, RotateCw, Ban, Smile } from "lucide-react";
 import { useState, useRef } from "react";
-import { formatMessageTime } from "../lib/utils";
+import { formatMessageTime, getProfilePicUrl } from "../lib/utils";
 import EmojiReactionPanel from "./EmojiReactionPanel";
 import MessageReactions from "./MessageReactions";
 import { useChatStore } from "../store/useChatStore";
@@ -109,9 +109,16 @@ export const MessageBubble = ({
   onReleasePress,
   onScrollToReply,
   onImageClick,
-  onRetryMessage
+  onRetryMessage,
+  onSwipeReply,
+  onDragReply,
+  onOpenMobileReaction
 }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [translateX, setTranslateX] = useState(0);
+  const [dragState, setDragState] = useState({ isDragging: false, startX: 0 });
+  const touchStartX = useRef(0);
+  const isSwiping = useRef(false);
   const { reactToMessage } = useChatStore();
   const { setViewingUserId } = useStatusStore();
 
@@ -138,21 +145,70 @@ export const MessageBubble = ({
   return (
     <div
       className={`group relative flex items-start gap-2 px-[4%] py-[2px] transition-colors ${isSent ? "flex-row-reverse" : "flex-row"
-        } ${isSelected ? "bg-primary/10" : isHighlighted ? "bg-base-300/60" : ""} ${
+        } ${isSelected ? "bg-[#25d366]/15 md:bg-primary/10" : isHighlighted ? "bg-base-300/60" : ""} ${
           message.reactions?.length > 0 ? "mb-4" : ""
         }`}
       onClick={(e) => {
         e.stopPropagation();
-        if (isSelectMode) onToggleSelect(message._id);
+        if (isSelectMode) onToggleSelect?.(message._id);
       }}
-      onContextMenu={(e) => onContextMenu(e, message)}
-      onMouseDown={() => onLongPress(message)}
+      onDoubleClick={() => {
+        if (window.innerWidth >= 768 && !isSelectMode) onDragReply?.(message);
+      }}
+      onContextMenu={(e) => onContextMenu?.(e, message)}
+      onMouseDown={() => !isSelectMode && onLongPress?.(message)}
       onMouseUp={onReleasePress}
       onMouseLeave={onReleasePress}
+      onPointerDown={(e) => {
+        if (window.innerWidth < 768 || isSelectMode || e.button !== 0) return;
+        setDragState({ isDragging: true, startX: e.clientX });
+      }}
+      onPointerMove={(e) => {
+        if (!dragState.isDragging) return;
+        const deltaX = e.clientX - dragState.startX;
+        if (deltaX > 0 && deltaX < 120) {
+          setTranslateX(deltaX);
+        }
+      }}
+      onPointerUp={() => {
+        if (dragState.isDragging) {
+          if (translateX > 90) onDragReply?.(message);
+          setDragState({ isDragging: false, startX: 0 });
+          setTranslateX(0);
+        }
+      }}
+      onPointerCancel={() => {
+        setDragState({ isDragging: false, startX: 0 });
+        setTranslateX(0);
+      }}
+      onTouchStart={(e) => {
+        if (isSelectMode) return;
+        touchStartX.current = e.touches[0].clientX;
+        isSwiping.current = true;
+        onLongPress?.(message);
+      }}
+      onTouchMove={(e) => {
+        if (!isSwiping.current || isSelectMode) return;
+        const deltaX = e.touches[0].clientX - touchStartX.current;
+        // If they start swiping, cancel the long press timer
+        if (Math.abs(deltaX) > 10) onReleasePress?.();
+        
+        if (deltaX > 0 && deltaX < 100) {
+          setTranslateX(deltaX);
+        }
+      }}
+      onTouchEnd={() => {
+        if (isSwiping.current && translateX > 80) {
+          onSwipeReply?.(message);
+        }
+        setTranslateX(0);
+        isSwiping.current = false;
+        onReleasePress?.();
+      }}
     >
-      {/* Checkbox (if in selection mode) */}
+      {/* Checkbox (if in selection mode) - HIDDEN ON MOBILE */}
       {isSelectMode && (
-        <div className={`mt-2 size-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${isSelected ? "bg-primary border-primary" : "border-base-content/30"
+        <div className={`mt-2 size-5 rounded-full border-2 hidden md:flex items-center justify-center flex-shrink-0 transition-all ${isSelected ? "bg-primary border-primary" : "border-base-content/30"
           }`}>
           {isSelected && <div className="size-2.5 rounded-full bg-white" />}
         </div>
@@ -161,7 +217,7 @@ export const MessageBubble = ({
       {/* Avatar (Incoming only) */}
       {!isSent && (
         <img
-          src={selectedUser.profilePic || "/avatar.png"}
+          src={getProfilePicUrl(selectedUser)}
           alt=""
           className="size-7 rounded-full object-cover mt-1 flex-shrink-0"
         />
@@ -171,8 +227,12 @@ export const MessageBubble = ({
       <div
         className={`relative flex flex-col max-w-[65%] transition-all ${
           isLargeEmoji ? "bg-transparent shadow-none" : "shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]"
-        } ${isCurrentMatch ? "ring-2 ring-primary ring-offset-1" : isMatch ? "ring-1 ring-primary/40" : ""}`}
+        } ${isCurrentMatch ? "ring-2 ring-primary ring-offset-1" : isMatch ? "ring-1 ring-primary/40" : ""} ${
+          dragState.isDragging ? "dragging-bubble" : ""
+        }`}
         style={{
+          transform: `translateX(${translateX}px)`,
+          transition: (translateX === 0 && !dragState.isDragging && !isSwiping.current) ? "transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28)" : "none",
           background: isLargeEmoji ? "transparent" : (isSent ? "var(--bubble-sent-bg)" : "var(--bubble-received-bg)"),
           color: isSent ? "var(--bubble-sent-text)" : "var(--bubble-received-text)",
           borderTopRightRadius: isSent ? "2px" : "12px",
@@ -217,7 +277,7 @@ export const MessageBubble = ({
               </div>
             </div>
             <div className="w-[42px] h-[42px] rounded-full overflow-hidden flex-shrink-0 bg-base-300">
-              <img src={isSent ? "/avatar.png" : (selectedUser?.profilePic || "/avatar.png")} className="w-full h-full object-cover" />
+              <img src={isSent ? "/avatar.png" : getProfilePicUrl(selectedUser)} className="w-full h-full object-cover" />
             </div>
           </div>
         )}
@@ -318,7 +378,7 @@ export const MessageBubble = ({
         {/* REACTION PICKER TRIGGER (Visible on hover) */}
         {!message.isDeletedForEveryone && (
           <div 
-            className={`absolute top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity z-20 ${
+            className={`absolute top-1/2 -translate-y-1/2 opacity-0 md:group-hover:opacity-100 transition-opacity z-20 hidden md:block ${
               isSent ? "right-full mr-2" : "left-full ml-2"
             }`}
           >
@@ -349,7 +409,13 @@ export const MessageBubble = ({
           reactions={message.reactions} 
           isSent={isSent}
           onReact={handleEmojiSelect}
-          onOpenPicker={() => setShowEmojiPicker(true)}
+          onOpenPicker={() => {
+            if (window.innerWidth < 768) {
+              onOpenMobileReaction?.(message);
+            } else {
+              setShowEmojiPicker(true);
+            }
+          }}
         />
       </div>
     </div>

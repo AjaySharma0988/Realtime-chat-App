@@ -3,6 +3,7 @@ import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
 import { useCallStore } from "../store/useCallStore";
 import { useEffect } from "react";
+import { getProfilePicUrl } from "../lib/utils";
 
 const ContactInfoPanel = ({ onClose }) => {
   const { selectedUser, messages } = useChatStore();
@@ -63,7 +64,7 @@ const ContactInfoPanel = ({ onClose }) => {
         <div className="flex flex-col items-center py-6 px-4 border-b border-base-300 bg-base-100">
           <div className="relative mb-3">
             <img
-              src={selectedUser.profilePic || "/avatar.png"}
+              src={getProfilePicUrl(selectedUser)}
               alt={selectedUser.fullName}
               className="size-32 rounded-full object-cover ring-4 ring-primary/20 shadow-lg"
             />
@@ -97,7 +98,7 @@ const ContactInfoPanel = ({ onClose }) => {
         {/* About -------------------------------------------------------------- */}
         <div className="px-4 py-4 border-b border-base-300">
           <p className="text-xs text-base-content/50 mb-1.5 font-medium uppercase tracking-wide">About</p>
-          <p className="text-sm text-base-content">Hey there! I'm using Chatty. 👋</p>
+          <p className="text-sm text-base-content">{selectedUser.about || "Hey there! I'm using Chatty."}</p>
         </div>
 
         {/* Shared media -------------------------------------------------------- */}

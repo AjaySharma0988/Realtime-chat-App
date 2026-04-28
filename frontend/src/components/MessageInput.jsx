@@ -63,6 +63,13 @@ const MessageInput = ({
 }) => {
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(injectedImage || null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (replyToMsg) {
+      inputRef.current?.focus();
+    }
+  }, [replyToMsg]);
 
   useEffect(() => {
     setImagePreview(injectedImage || null);
@@ -326,6 +333,7 @@ const MessageInput = ({
 
           {/* TEXT INPUT */}
           <input
+            ref={inputRef}
             type="text"
             className="flex-1 py-2 bg-transparent text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none px-2"
             placeholder="Type a message"

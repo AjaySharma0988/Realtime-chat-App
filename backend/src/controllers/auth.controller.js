@@ -116,27 +116,44 @@ export const logout = (req, res) => {
 
 export const updateProfile = async (req, res) => {
   try {
-    const { profilePic } = req.body;
+    const { profilePic, fullName, about } = req.body;
     const userId = req.user._id;
 
-    if (!profilePic) {
-      return res.status(400).json({ error: "Profile pic is required" });
+    const updateData = {};
+    if (fullName) updateData.fullName = fullName;
+    if (about !== undefined) updateData.about = about;
+
+    if (profilePic) {
+      // Enforce valid base64 image before uploading
+      if (!/^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(profilePic)) {
+        return res.status(400).json({ error: "Invalid image format" });
+      }
+
+      const uploadResponse = await cloudinary.uploader.upload(profilePic, {
+        folder: "profile-pics",
+        resource_type: "image",
+      });
+      updateData.profilePic = uploadResponse.secure_url;
     }
 
-    // Enforce valid base64 image before uploading
-    if (!/^data:image\/(png|jpeg|jpg|webp|gif);base64,/.test(profilePic)) {
-      return res.status(400).json({ error: "Invalid image format" });
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: "No update data provided" });
     }
 
-    const uploadResponse = await cloudinary.uploader.upload(profilePic, {
-      folder: "profile-pics",
-      resource_type: "image",
-    });
     const updatedUser = await User.findByIdAndUpdate(
       userId,
-      { profilePic: uploadResponse.secure_url },
+      updateData,
       { new: true }
     );
+
+    // Real-time: Notify all online users about the profile update
+    const { io } = await import("../lib/socket.js");
+    io.emit("profileUpdated", {
+      _id: updatedUser._id,
+      fullName: updatedUser.fullName,
+      profilePic: updatedUser.profilePic,
+      about: updatedUser.about,
+    });
 
     res.status(200).json(updatedUser);
   } catch (error) {
@@ -180,5 +197,44 @@ export const restoreAccount = async (req, res) => {
   } catch (error) {
     console.error("Error in restoreAccount controller", error.message);
     res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const updatePrivacySettings = async (req, res) => {
+  try {
+    const { profilePhotoVisibility, allowedUsers } = req.body;
+    const userId = req.user._id;
+
+    const VALID_VISIBILITY = ["everyone", "nobody", "custom"];
+    if (profilePhotoVisibility && !VALID_VISIBILITY.includes(profilePhotoVisibility)) {
+      return res.status(400).json({ error: "Invalid visibility value" });
+    }
+
+    const updateData = {};
+    if (profilePhotoVisibility) {
+      updateData["privacy.profilePhotoVisibility"] = profilePhotoVisibility;
+    }
+    if (Array.isArray(allowedUsers)) {
+      updateData["privacy.allowedUsers"] = allowedUsers;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: "No privacy settings provided" });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true }
+    ).select("-password");
+
+    // Real-time: Notify everyone about the privacy update
+    const { io } = await import("../lib/socket.js");
+    io.emit("profilePhotoPrivacyUpdated", { userId });
+
+    res.status(200).json(updatedUser);
+  } catch (error) {
+    console.log("Error in updatePrivacySettings controller:", error.message);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
