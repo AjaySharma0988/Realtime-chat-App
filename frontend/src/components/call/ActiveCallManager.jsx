@@ -53,6 +53,14 @@ export default function ActiveCallManager() {
   const localStreamR  = useRef(null);
   const callerFlag    = useRef(useCallStore.getState().isCaller);
 
+  // ── Helper: Wait for ICE gathering ─────────────────────────────────────────
+  const waitForIce = (pc) => new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") return resolve();
+    const check = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", check); resolve(); } };
+    pc.addEventListener("icegatheringstatechange", check);
+    setTimeout(resolve, 2000); // Max 2s wait
+  });
+
   // ── ICE drain ──────────────────────────────────────────────────────────────
   const drainIce = useCallback(async () => {
     if (!pcRef.current || !pcRef.current.remoteDescription) return;
@@ -125,7 +133,7 @@ export default function ActiveCallManager() {
 
     pc.onicecandidate = ({ candidate }) => {
       if (candidate && peerId) {
-        console.log("[WebRTC Manager] Sending ICE candidate to:", peerId);
+        console.log("[WebRTC Manager] ICE sent");
         sock.emit("ice-candidate", { to: peerId, candidate });
       } else {
         console.log("[WebRTC Manager] ICE gathering complete");
@@ -140,7 +148,7 @@ export default function ActiveCallManager() {
     let discoTimer = null;
     pc.oniceconnectionstatechange = () => {
       const s = pc.iceConnectionState;
-      console.log("ICE:", s);
+      console.log("ICE STATE:", s);
       if (s === "connected" || s === "completed") {
         clearTimeout(discoTimer);
         iceRestartCnt.current = 0;
@@ -245,9 +253,7 @@ export default function ActiveCallManager() {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
     
-    console.log("[WebRTC Manager] Waiting for initial ICE...");
-    await waitForIce(pc);
-
+    console.log("[WebRTC Manager] Offer sent");
     sock.emit("call-user", {
       to: peerId, offer: pc.localDescription, callType,
       callerInfo: {
@@ -281,15 +287,14 @@ export default function ActiveCallManager() {
 
     console.log("[WebRTC Manager] Receiver setting remote description");
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
+    console.log("[WebRTC Manager] Offer received & set");
     await drainIce();
     
     console.log("[WebRTC Manager] Receiver creating answer");
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     
-    console.log("[WebRTC Manager] Waiting for initial ICE...");
-    await waitForIce(pc);
-
+    console.log("[WebRTC Manager] Answer sent");
     sock.emit("call-accepted", { to: peerId, answer: pc.localDescription });
   }, [getMedia, buildPC, drainIce, peerId, callType]);
 
@@ -339,7 +344,7 @@ export default function ActiveCallManager() {
       console.log("[WebRTC Manager] Answer received from peer");
       try {
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-        console.log("[WebRTC Manager] Remote description (Answer) set");
+        console.log("[WebRTC Manager] Answer received & set");
         await drainIce();
 
         // ✅ FORCE UI TRANSITION
@@ -358,7 +363,7 @@ export default function ActiveCallManager() {
 
     sock.on("ice-candidate", async ({ candidate }) => {
       if (!candidate || cleanedUp.current) return;
-      console.log("[WebRTC Manager] Received ICE candidate from peer");
+      console.log("[WebRTC Manager] ICE received");
       
       if (remoteReady.current && pcRef.current && pcRef.current.remoteDescription) {
         try { 

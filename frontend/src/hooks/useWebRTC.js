@@ -109,6 +109,7 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
       // ICE candidates → send to peer via socket
       pc.onicecandidate = (e) => {
         if (e.candidate) {
+          console.log("[useWebRTC] ICE sent");
           socket.emit("ice-candidate", { to: peerId, candidate: e.candidate });
         }
       };
@@ -127,6 +128,7 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
 
       pc.oniceconnectionstatechange = () => {
         const s = pc.iceConnectionState;
+        console.log("ICE STATE:", s);
         if (s === "connected" || s === "completed") setStatus("active");
         if (s === "failed") {
           console.warn("[WebRTC] ICE Connection failed, attempting restart");
@@ -157,21 +159,18 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         
-        console.log("[useWebRTC] Waiting for ICE...");
-        await waitForIce(pc);
-        
+        console.log("[useWebRTC] Offer sent");
         socket.emit("call-user", { to: peerId, offer: pc.localDescription, callType, callerInfo: null });
       } else {
         // Receiver: set remote offer first
         if (initialOffer) {
           await pc.setRemoteDescription(new RTCSessionDescription(initialOffer));
+          console.log("[useWebRTC] Offer received & set");
           await drainCandidates();
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
           
-          console.log("[useWebRTC] Waiting for ICE...");
-          await waitForIce(pc);
-          
+          console.log("[useWebRTC] Answer sent");
           socket.emit("call-accepted", { to: peerId, answer: pc.localDescription });
           setStatus("connecting");
         }

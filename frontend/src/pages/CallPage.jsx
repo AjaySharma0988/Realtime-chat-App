@@ -423,7 +423,7 @@ const CallPage = () => {
 
     pc.onicecandidate = ({ candidate }) => {
       if (candidate) {
-        console.log("[WebRTC] Sending ICE candidate to:", peerId);
+        console.log("[WebRTC] ICE sent");
         sock.emit("ice-candidate", { to: peerId, candidate });
       } else {
         console.log("[WebRTC] ICE gathering complete for this PC");
@@ -482,7 +482,7 @@ const CallPage = () => {
 
     pc.oniceconnectionstatechange = () => {
       const s = pc.iceConnectionState;
-      console.log("ICE:", s);
+      console.log("ICE STATE:", s);
 
       if (s === "connected" || s === "completed") {
         clearTimeout(disconnectTimer);
@@ -665,12 +665,7 @@ const CallPage = () => {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       
-      // 🧩 WAIT FOR ICE (Step 6 fix)
-      console.log("[WebRTC] Waiting for initial ICE candidates...");
-      await waitForIce(pc);
-      
-      setStatus("calling");
-      console.log("[WebRTC] Sending offer to:", peerId);
+      console.log("[WebRTC] Offer sent");
       sock.emit("call-user", {
         to: peerId,
         offer: pc.localDescription, // Use description AFTER gathering
@@ -708,16 +703,14 @@ const CallPage = () => {
     try {
       console.log("[WebRTC] Receiver setting remote description (Offer)");
       await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      console.log("[WebRTC] Offer received & set");
       await drainIce();
       
       console.log("[WebRTC] Receiver creating answer");
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
       
-      // 🧩 WAIT FOR ICE (Step 6 fix)
-      console.log("[WebRTC] Waiting for initial ICE candidates...");
-      await waitForIce(pc);
-      
+      console.log("[WebRTC] Answer sent");
       sock.emit("call-accepted", { to: peerId, answer: pc.localDescription });
       setStatus("connecting");
     } catch (err) {
@@ -789,7 +782,7 @@ const CallPage = () => {
       console.log("ANSWER RECEIVED");
       try {
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-        console.log("REMOTE DESC SET");
+        console.log("[WebRTC] Answer received & set");
         await drainIce();
 
         // ✅ FORCE UI TRANSITION
@@ -812,7 +805,7 @@ const CallPage = () => {
     // ICE from peer
     sock.on("ice-candidate", async ({ candidate }) => {
       if (!candidate || cleanedUp.current) return;
-      console.log("[WebRTC] Received ICE candidate from peer");
+      console.log("[WebRTC] ICE received");
       
       if (remoteReady.current && pcRef.current && pcRef.current.remoteDescription) {
         try { 
