@@ -19,6 +19,11 @@ const io = new Server(server, {
       ],
     credentials: true,
   },
+  // ── Timeout tuning: prevent socket drop during long WebRTC calls ──────────
+  // Default pingTimeout (~20 s) causes disconnects on slow/mobile networks.
+  // 120 s timeout gives ICE restarts time to complete without killing the socket.
+  pingTimeout: 120000,   // 120 s — wait this long before declaring socket dead
+  pingInterval: 25000,   // 25 s — heartbeat interval (standard recommended value)
   // 5 MB cap — SDP offers + callerInfo can be several KB; generous but still bounded
   maxHttpBufferSize: 5e6,
 });

@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ICE_SERVERS } from "../constants/webrtc";
+import { fetchIceServers, ICE_SERVERS } from "../constants/webrtc";
 
 // ── ICE / STUN / TURN configuration moved to constants/webrtc.js ─────────────
 
@@ -94,8 +94,10 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
       setLocalStream(stream);
       localStreamRef.current = stream;
 
-      // 2. Create peer connection
-      const pc = new RTCPeerConnection(ICE_SERVERS);
+      // 2. Create peer connection with fresh TURN credentials (1-hour TTL)
+      // fetchIceServers() fetches backend-signed credentials — prevents 60 s TURN expiry.
+      const iceConfig = await fetchIceServers();
+      const pc = new RTCPeerConnection(iceConfig);
       pcRef.current = pc;
 
       // Add local tracks
@@ -116,25 +118,47 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
 
       pc.onconnectionstatechange = () => {
         const s = pc.connectionState;
+        console.log("[WebRTC] Connection state:", s);
         if (s === "connected") setStatus("active");
         if (s === "failed") {
           console.warn("[WebRTC] Connection failed, attempting ICE restart");
-          // Safely restart ICE if supported
           if (pc.restartIce) pc.restartIce();
           else setStatus("error");
         }
-        if (s === "disconnected" || s === "closed") setStatus("ended");
+        // "disconnected" is TRANSIENT — do NOT end the call here.
+        // The peer may be switching networks; ICE will recover automatically.
+        // Only "closed" is truly terminal.
+        if (s === "disconnected") {
+          console.warn("[WebRTC] Connection temporarily disconnected — waiting for recovery");
+        }
+        if (s === "closed") setStatus("ended");
       };
 
       pc.oniceconnectionstatechange = () => {
         const s = pc.iceConnectionState;
-        console.log("ICE STATE:", s);
+        console.log("[WebRTC] ICE state:", s);
         if (s === "connected" || s === "completed") setStatus("active");
         if (s === "failed") {
-          console.warn("[WebRTC] ICE Connection failed, attempting restart");
+          console.warn("[WebRTC] ICE failed — attempting ICE restart");
+          // restartIce() triggers onnegotiationneeded which re-sends offer via socket
           if (pc.restartIce) pc.restartIce();
+          else setStatus("error");
         }
-        if (s === "disconnected" || s === "closed") setStatus("ended");
+        // "disconnected" is TRANSIENT — the browser will attempt reconnection.
+        // Start a 7-second grace-period: if still disconnected, restart ICE.
+        if (s === "disconnected") {
+          console.warn("[WebRTC] ICE temporarily disconnected — starting recovery timer");
+          setTimeout(() => {
+            if (!pcRef.current) return;
+            const current = pcRef.current.iceConnectionState;
+            if (current === "disconnected" || current === "failed") {
+              console.warn("[WebRTC] ICE still disconnected after grace period — restarting ICE");
+              if (pcRef.current.restartIce) pcRef.current.restartIce();
+            }
+          }, 7000);
+        }
+        // Only "closed" is terminal
+        if (s === "closed") setStatus("ended");
       };
 
       pc.onicegatheringstatechange = () => {
@@ -185,7 +209,31 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
   // Run on mount
   useEffect(() => {
     initialize();
+
+    // ── Periodic ICE state diagnostics (every 10 s) ───────────────────────
+    // Helps detect silent TURN session expiry without ending the call.
+    const iceMonitor = setInterval(() => {
+      if (pcRef.current) {
+        console.log(
+          "[WebRTC] Health check — ICE:", pcRef.current.iceConnectionState,
+          "| Connection:", pcRef.current.connectionState,
+          "| Signaling:", pcRef.current.signalingState
+        );
+      }
+    }, 10000);
+
+    // ── Page visibility: log only, never stop the call ────────────────────
+    // Browsers throttle inactive tabs, which can momentarily affect ICE
+    // timers. We log the event but take NO destructive action.
+    const handleVisibility = () => {
+      console.log("[WebRTC] Tab visibility changed — hidden:", document.hidden,
+        "| ICE:", pcRef.current?.iceConnectionState ?? "n/a");
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
+      clearInterval(iceMonitor);
+      document.removeEventListener("visibilitychange", handleVisibility);
       localStreamRef.current?.getTracks().forEach((t) => t.stop());
       pcRef.current?.close();
       pcRef.current = null;
