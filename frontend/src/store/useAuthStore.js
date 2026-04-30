@@ -24,6 +24,9 @@ export const useAuthStore = create((set, get) => ({
   isUpdatingProfile: false,
   isCheckingAuth: true,
   onlineUsers: [],
+  linkedDevices: [],
+  totalActiveSessions: 0,
+  isFetchingDevices: false,
   socket: null,
 
   checkAuth: async () => {
@@ -62,7 +65,7 @@ export const useAuthStore = create((set, get) => ({
       toast.success("Account created successfully");
       get().connectSocket();
     } catch (error) {
-      toast.error(error.response.data.message);
+      toast.error(error.response?.data?.error || error.response?.data?.message || "Signup failed");
     } finally {
       set({ isSigningUp: false });
     }
@@ -77,7 +80,7 @@ export const useAuthStore = create((set, get) => ({
       toast.success("Logged in successfully");
       get().connectSocket();
     } catch (error) {
-      toast.error(error.response.data.message);
+      toast.error(error.response?.data?.error || error.response?.data?.message || "Login failed");
     } finally {
       set({ isLoggingIn: false });
     }
@@ -159,6 +162,35 @@ export const useAuthStore = create((set, get) => ({
       toast.success("Account restored successfully!");
     } catch (error) {
       toast.error(error.response.data.message || "Failed to restore account");
+    }
+  },
+
+  fetchLinkedDevices: async () => {
+    set({ isFetchingDevices: true });
+    try {
+      const res = await axiosInstance.get("/auth/linked-devices");
+      set({ 
+        linkedDevices: res.data.sessions, 
+        totalActiveSessions: res.data.totalActive 
+      });
+    } catch (error) {
+      console.log("Error in fetchLinkedDevices:", error);
+    } finally {
+      set({ isFetchingDevices: false });
+    }
+  },
+
+  removeSession: async (sessionId) => {
+    try {
+      await axiosInstance.delete(`/auth/linked-devices/${sessionId}`);
+      // UI update is handled via socket session:removed but we can optimistic update
+      set((state) => ({
+        linkedDevices: state.linkedDevices.filter((d) => d.sessionId !== sessionId),
+        totalActiveSessions: Math.max(0, state.totalActiveSessions - 1)
+      }));
+      toast.success("Session removed");
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Failed to remove session");
     }
   },
 
@@ -257,6 +289,32 @@ export const useAuthStore = create((set, get) => ({
       import("./useCallStore").then(({ useCallStore }) => {
         useCallStore.getState().fetchCallHistory();
       });
+    });
+
+    // ─── Session Management ────────────────────────────────────────────────
+    newSocket.on("session:added", (session) => {
+      set((state) => {
+        const exists = state.linkedDevices.find(d => d.sessionId === session.sessionId);
+        if (exists) return state;
+        return {
+          linkedDevices: [session, ...state.linkedDevices],
+          totalActiveSessions: state.totalActiveSessions + 1
+        };
+      });
+    });
+
+    newSocket.on("session:removed", (sessionId) => {
+      set((state) => ({
+        linkedDevices: state.linkedDevices.filter(d => d.sessionId !== sessionId),
+        totalActiveSessions: Math.max(0, state.totalActiveSessions - 1)
+      }));
+    });
+
+    newSocket.on("session:terminated", ({ message }) => {
+      set({ authUser: null });
+      localStorage.removeItem("chatty_user");
+      get().disconnectSocket();
+      toast.error(message || "Your session has been terminated.", { id: "session-terminated", duration: 5000 });
     });
   },
 

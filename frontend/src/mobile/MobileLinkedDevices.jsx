@@ -31,31 +31,21 @@ const formatLastActive = (date) => {
 };
 
 const MobileLinkedDevices = ({ onBack }) => {
-  const { socket } = useAuthStore();
+  const { 
+    socket, authUser, linkedDevices, totalActiveSessions, 
+    fetchLinkedDevices, removeSession, isFetchingDevices 
+  } = useAuthStore();
 
-  const [devices, setDevices] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [showQR, setShowQR] = useState(false);
   const [qrData, setQrData] = useState(null);
   const [qrExpired, setQrExpired] = useState(false);
   const [qrLinked, setQrLinked] = useState(false);
   const [removingId, setRemovingId] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
   const qrTimerRef = useRef(null);
 
-  const fetchDevices = async () => {
-    try {
-      const res = await axiosInstance.get("/auth/linked-devices");
-      setDevices(res.data);
-    } catch {
-      toast.error("Failed to load linked devices");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => { fetchDevices(); }, []);
+  useEffect(() => { 
+    fetchLinkedDevices(); 
+  }, [fetchLinkedDevices]);
 
   const generateQR = async () => {
     try {
@@ -78,26 +68,24 @@ const MobileLinkedDevices = ({ onBack }) => {
       setQrLinked(true);
       clearTimeout(qrTimerRef.current);
       toast.success(`Device linked as ${userData.fullName}!`);
-      setTimeout(() => { setShowQR(false); fetchDevices(); }, 2000);
+      setTimeout(() => { 
+        setShowQR(false); 
+        fetchLinkedDevices(); 
+      }, 2000);
     };
     socket.on("device:linked", handler);
     return () => socket.off("device:linked", handler);
-  }, [socket]);
+  }, [socket, fetchLinkedDevices]);
 
   useEffect(() => () => clearTimeout(qrTimerRef.current), []);
 
-  const removeDevice = async (deviceId) => {
-    setRemovingId(deviceId);
-    try {
-      await axiosInstance.delete(`/auth/linked-devices/${deviceId}`);
-      setDevices((prev) => prev.filter((d) => d.deviceId !== deviceId));
-      toast.success("Device removed");
-    } catch {
-      toast.error("Failed to remove device");
-    } finally {
-      setRemovingId(null);
-    }
+  const handleRemove = async (sessionId) => {
+    setRemovingId(sessionId);
+    await removeSession(sessionId);
+    setRemovingId(null);
   };
+
+  const isCurrentSession = (sessionId) => sessionId === authUser?.sessionId;
 
   const qrContent = qrData
     ? `${window.location.origin}/link-device?sessionId=${qrData.sessionId}`
@@ -112,10 +100,11 @@ const MobileLinkedDevices = ({ onBack }) => {
         </button>
         <h1 className="text-lg font-bold text-base-content flex-1 px-2">Linked Devices</h1>
         <button
-          onClick={() => { setRefreshing(true); fetchDevices(); }}
+          onClick={() => fetchLinkedDevices()}
+          disabled={isFetchingDevices}
           className="p-2 hover:bg-base-content/10 rounded-full"
         >
-          <RefreshCw className={`size-5 text-base-content/60 ${refreshing ? "animate-spin" : ""}`} />
+          <RefreshCw className={`size-5 text-base-content/60 ${isFetchingDevices ? "animate-spin" : ""}`} />
         </button>
       </div>
 
@@ -124,17 +113,17 @@ const MobileLinkedDevices = ({ onBack }) => {
         {/* Illustration */}
         <div className="text-center space-y-3">
           <div className="flex items-center justify-center gap-4 py-4">
-            <div className="size-16 rounded-2xl bg-base-200 flex items-center justify-center border border-base-300">
+            <div className="size-16 rounded-2xl bg-base-200 flex items-center justify-center border border-base-300 shadow-sm">
               <Smartphone className="size-8 text-primary" />
             </div>
-            <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center">
+            <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center border border-primary/20">
               <CheckCircle className="size-4 text-primary" />
             </div>
-            <div className="size-16 rounded-2xl bg-base-200 flex items-center justify-center border border-base-300">
+            <div className="size-16 rounded-2xl bg-base-200 flex items-center justify-center border border-base-300 shadow-sm">
               <Monitor className="size-8 text-primary" />
             </div>
           </div>
-          <p className="text-sm text-base-content/60 leading-relaxed">
+          <p className="text-sm text-base-content/60 leading-relaxed px-4">
             Link other devices to this account.
             <br />Use Chatty on up to 4 linked devices.
           </p>
@@ -143,86 +132,102 @@ const MobileLinkedDevices = ({ onBack }) => {
         {/* Link button */}
         <button
           onClick={generateQR}
-          className="w-full btn btn-primary rounded-full gap-2"
+          className="w-full btn btn-primary rounded-full gap-2 shadow-lg shadow-primary/20"
         >
           <QrCode className="size-4" />
           Link a device
         </button>
 
         {/* Devices list */}
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
+        {isFetchingDevices && linkedDevices.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3 opacity-40">
             <Loader className="size-8 animate-spin text-primary" />
+            <p className="text-xs font-bold uppercase tracking-widest">Updating Sessions</p>
           </div>
         ) : (
           <>
-            {devices.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs font-semibold text-base-content/50 uppercase tracking-wider px-1">
-                  Active Sessions
-                </p>
-                {devices.map((device) => (
-                  <div
-                    key={device.deviceId}
-                    className="flex items-center gap-3 p-4 rounded-xl bg-base-200 border border-base-300"
-                  >
-                    <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <DeviceIcon os={device.os} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-base-content truncate">
-                        {device.deviceName || `${device.browser} on ${device.os}`}
-                      </p>
-                      <p className="text-xs text-base-content/50">
-                        {device.isActive ? (
-                          <span className="text-success">Active</span>
-                        ) : (
-                          "Inactive"
-                        )}
-                        {" · "}
-                        {formatLastActive(device.lastActive)}
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => removeDevice(device.deviceId)}
-                      disabled={removingId === device.deviceId}
-                      className="p-2 rounded-full hover:bg-error/10 transition-colors disabled:opacity-50"
+            {linkedDevices.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-[10px] font-bold text-base-content/40 uppercase tracking-[0.2em]">
+                    Active Sessions ({totalActiveSessions})
+                  </p>
+                  {isFetchingDevices && <Loader className="size-3 animate-spin text-primary" />}
+                </div>
+
+                {linkedDevices.map((session) => {
+                  const isCurrent = isCurrentSession(session.sessionId);
+                  return (
+                    <div
+                      key={session.sessionId}
+                      className={`flex items-center gap-4 p-4 rounded-2xl border transition-all duration-300
+                        ${isCurrent 
+                          ? "bg-primary/5 border-primary/20 shadow-sm" 
+                          : "bg-base-200 border-base-300 active:scale-[0.98]"}`}
                     >
-                      {removingId === device.deviceId
-                        ? <Loader className="size-4 animate-spin text-error" />
-                        : <Trash2 className="size-4 text-error" />
-                      }
-                    </button>
-                  </div>
-                ))}
+                      <div className={`size-11 rounded-xl flex items-center justify-center flex-shrink-0
+                        ${isCurrent ? "bg-primary text-primary-content shadow-md" : "bg-primary/10 text-primary"}`}>
+                        <DeviceIcon os={session.os} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-sm text-base-content truncate">
+                             {isCurrent ? "This device" : (session.deviceName || `${session.browser} on ${session.os}`)}
+                          </p>
+                          {isCurrent && (
+                             <span className="badge badge-primary badge-sm py-0 h-4 text-[10px] font-bold">Current</span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-base-content/50 mt-0.5 truncate">
+                           {session.browser} • {session.ip || "Unknown IP"}
+                           {" · "}
+                           {isCurrent ? "Online" : formatLastActive(session.lastActive)}
+                        </p>
+                      </div>
+                      
+                      {!isCurrent && (
+                        <button
+                          onClick={() => handleRemove(session.sessionId)}
+                          disabled={removingId === session.sessionId}
+                          className="p-2 rounded-full active:bg-error/20 text-error disabled:opacity-30"
+                        >
+                          {removingId === session.sessionId
+                            ? <Loader className="size-4 animate-spin" />
+                            : <Trash2 className="size-4" />
+                          }
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
-            {devices.length === 0 && (
-              <p className="text-center text-sm text-base-content/40 py-4">No linked devices yet.</p>
+            {linkedDevices.length === 0 && !isFetchingDevices && (
+              <p className="text-center text-sm text-base-content/30 py-8 italic font-light">No other devices linked.</p>
             )}
           </>
         )}
 
         {/* E2E note */}
-        <div className="flex items-start gap-2 text-xs text-base-content/40 border border-base-300 rounded-xl p-3">
-          <Shield className="size-4 flex-shrink-0 text-primary mt-0.5" />
-          <p>
+        <div className="flex items-start gap-3 text-[11px] text-base-content/40 bg-base-200/50 border border-base-300 rounded-2xl p-4 shadow-sm">
+          <Shield className="size-5 flex-shrink-0 text-primary mt-0.5" />
+          <p className="leading-normal">
             Your personal messages are{" "}
-            <span className="text-primary font-medium">end-to-end encrypted</span>{" "}
-            on all your devices.
+            <span className="text-primary font-bold">end-to-end encrypted</span>{" "}
+            on all your devices. Chatty cannot read them.
           </p>
         </div>
       </div>
 
       {/* QR Modal */}
       {showQR && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-base-200 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl border border-base-300 space-y-4">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-base-200 rounded-3xl p-6 max-w-[320px] w-full mx-4 shadow-2xl border border-base-300 space-y-4 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-base-content">Scan QR Code</h3>
               <button
                 onClick={() => { setShowQR(false); clearTimeout(qrTimerRef.current); }}
-                className="p-1.5 rounded-full hover:bg-base-300 transition-colors"
+                className="p-2 rounded-full bg-base-100 hover:bg-base-300 transition-colors"
               >
                 <X className="size-4" />
               </button>
@@ -231,27 +236,27 @@ const MobileLinkedDevices = ({ onBack }) => {
             {qrLinked ? (
               <div className="flex flex-col items-center gap-3 py-6">
                 <CheckCircle className="size-16 text-success" />
-                <p className="text-sm font-medium text-success">Device linked successfully!</p>
+                <p className="text-sm font-bold text-success">Device linked!</p>
               </div>
             ) : qrExpired ? (
               <div className="flex flex-col items-center gap-4 py-6">
-                <p className="text-sm text-error text-center">QR code expired. Generate a new one.</p>
-                <button onClick={generateQR} className="btn btn-primary btn-sm rounded-full gap-1">
+                <p className="text-xs text-error text-center font-medium leading-relaxed">QR code expired.<br/>Generate a new one.</p>
+                <button onClick={generateQR} className="btn btn-primary btn-sm rounded-full px-6 gap-2">
                   <RefreshCw className="size-4" /> Regenerate
                 </button>
               </div>
             ) : (
               <>
-                <div className="bg-white p-4 rounded-xl flex items-center justify-center">
-                  <QRCode value={qrContent} size={220} />
+                <div className="bg-white p-4 rounded-2xl flex items-center justify-center shadow-inner">
+                  <QRCode value={qrContent} size={200} />
                 </div>
-                <p className="text-xs text-base-content/50 text-center leading-relaxed">
+                <p className="text-[11px] text-base-content/50 text-center leading-relaxed px-2">
                   Open Chatty on your phone and scan this code.<br />
                   Expires in 2 minutes.
                 </p>
-                <div className="flex items-center gap-2 justify-center">
-                  <div className="size-2 rounded-full bg-success animate-pulse" />
-                  <span className="text-xs text-base-content/60">Waiting for scan…</span>
+                <div className="flex items-center gap-2 justify-center py-1">
+                  <div className="size-1.5 rounded-full bg-success animate-pulse" />
+                  <span className="text-[10px] text-base-content/60 font-bold uppercase tracking-wider">Waiting for scan</span>
                 </div>
               </>
             )}

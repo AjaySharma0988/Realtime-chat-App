@@ -1,4 +1,4 @@
-import { Check, CheckCheck, Mic, Video, Phone, Clock, RotateCw, Ban, Smile } from "lucide-react";
+import { Check, CheckCheck, Mic, Video, Phone, Clock, RotateCw, Ban, Smile, Reply } from "lucide-react";
 import { useState, useRef } from "react";
 import { formatMessageTime, getProfilePicUrl } from "../lib/utils";
 import EmojiReactionPanel from "./EmojiReactionPanel";
@@ -116,9 +116,10 @@ export const MessageBubble = ({
 }) => {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [translateX, setTranslateX] = useState(0);
-  const [dragState, setDragState] = useState({ isDragging: false, startX: 0 });
   const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
   const isSwiping = useRef(false);
+  const swipeDirection = useRef(null); // 'horizontal' | 'vertical' | null
   const { reactToMessage } = useChatStore();
   const { setViewingUserId } = useStatusStore();
 
@@ -159,50 +160,55 @@ export const MessageBubble = ({
       onMouseDown={() => !isSelectMode && onLongPress?.(message)}
       onMouseUp={onReleasePress}
       onMouseLeave={onReleasePress}
-      onPointerDown={(e) => {
-        if (window.innerWidth < 768 || isSelectMode || e.button !== 0) return;
-        setDragState({ isDragging: true, startX: e.clientX });
-      }}
-      onPointerMove={(e) => {
-        if (!dragState.isDragging) return;
-        const deltaX = e.clientX - dragState.startX;
-        if (deltaX > 0 && deltaX < 120) {
-          setTranslateX(deltaX);
-        }
-      }}
-      onPointerUp={() => {
-        if (dragState.isDragging) {
-          if (translateX > 90) onDragReply?.(message);
-          setDragState({ isDragging: false, startX: 0 });
-          setTranslateX(0);
-        }
-      }}
-      onPointerCancel={() => {
-        setDragState({ isDragging: false, startX: 0 });
-        setTranslateX(0);
-      }}
       onTouchStart={(e) => {
         if (isSelectMode) return;
         touchStartX.current = e.touches[0].clientX;
+        touchStartY.current = e.touches[0].clientY;
         isSwiping.current = true;
+        swipeDirection.current = null;
         onLongPress?.(message);
       }}
       onTouchMove={(e) => {
         if (!isSwiping.current || isSelectMode) return;
-        const deltaX = e.touches[0].clientX - touchStartX.current;
-        // If they start swiping, cancel the long press timer
-        if (Math.abs(deltaX) > 10) onReleasePress?.();
-        
-        if (deltaX > 0 && deltaX < 100) {
-          setTranslateX(deltaX);
+        const touch = e.touches[0];
+        const deltaX = touch.clientX - touchStartX.current;
+        const deltaY = touch.clientY - touchStartY.current;
+
+        // Determine direction on first significant movement
+        if (!swipeDirection.current) {
+          if (Math.abs(deltaX) > 10) {
+            swipeDirection.current = "horizontal";
+          } else if (Math.abs(deltaY) > 10) {
+            swipeDirection.current = "vertical";
+            isSwiping.current = false;
+            onReleasePress?.();
+            return;
+          } else {
+            return;
+          }
+        }
+
+        if (swipeDirection.current === "horizontal") {
+          // Prevent vertical scroll when swiping horizontally
+          if (e.cancelable) e.preventDefault();
+          onReleasePress?.(); // Cancel long press timer
+
+          if (deltaX > 0) {
+            // Apply resistance curve for a natural feel (WhatsApp style)
+            const resistance = deltaX > 70 ? 70 + (deltaX - 70) * 0.2 : deltaX;
+            setTranslateX(Math.min(resistance, 90));
+          } else {
+            setTranslateX(0);
+          }
         }
       }}
       onTouchEnd={() => {
-        if (isSwiping.current && translateX > 80) {
+        if (isSwiping.current && swipeDirection.current === "horizontal" && translateX > 65) {
           onSwipeReply?.(message);
         }
         setTranslateX(0);
         isSwiping.current = false;
+        swipeDirection.current = null;
         onReleasePress?.();
       }}
     >
@@ -227,21 +233,31 @@ export const MessageBubble = ({
       <div
         className={`relative flex flex-col max-w-[65%] transition-all ${
           isLargeEmoji ? "bg-transparent shadow-none" : "shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]"
-        } ${isCurrentMatch ? "ring-2 ring-primary ring-offset-1" : isMatch ? "ring-1 ring-primary/40" : ""} ${
-          dragState.isDragging ? "dragging-bubble" : ""
-        }`}
+        } ${isCurrentMatch ? "ring-2 ring-primary ring-offset-1" : isMatch ? "ring-1 ring-primary/40" : ""}`}
         style={{
           transform: `translateX(${translateX}px)`,
-          transition: (translateX === 0 && !dragState.isDragging && !isSwiping.current) ? "transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28)" : "none",
+          transition: (translateX === 0 && !isSwiping.current) ? "transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28)" : "none",
           background: isLargeEmoji ? "transparent" : (isSent ? "var(--bubble-sent-bg)" : "var(--bubble-received-bg)"),
           color: isSent ? "var(--bubble-sent-text)" : "var(--bubble-received-text)",
           borderTopRightRadius: isSent ? "2px" : "12px",
           borderTopLeftRadius: isSent ? "12px" : "2px",
           borderBottomRightRadius: "12px",
           borderBottomLeftRadius: "12px",
-          padding: isLargeEmoji ? "0" : "4px 8px"
+          padding: isLargeEmoji ? "0" : "4px 8px",
+          touchAction: "pan-y"
         }}
       >
+        {/* Swipe Reply Indicator */}
+        <div 
+          className="absolute right-full mr-3 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity"
+          style={{ 
+            opacity: translateX > 20 ? Math.min((translateX - 20) / 40, 1) : 0,
+            transform: `translateY(-50%) scale(${translateX > 60 ? 1.1 : 0.8})`,
+            color: translateX > 65 ? "oklch(var(--p))" : "currentColor"
+          }}
+        >
+          <Reply size={20} className={translateX > 65 ? "animate-pulse" : ""} />
+        </div>
         {!isLargeEmoji && <ReplyQuote replyTo={message.replyTo} onScrollTo={onScrollToReply} />}
         {!isLargeEmoji && message.statusRef && (
           <StatusPreview 

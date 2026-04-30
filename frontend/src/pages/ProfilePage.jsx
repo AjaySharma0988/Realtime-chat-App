@@ -12,6 +12,7 @@ import SidebarBase from "../components/SidebarBase";
 import { useNavigate } from "react-router-dom";
 import NotificationSettings from "../components/NotificationSettings";
 import PrivacySettings from "../components/PrivacySettings";
+import DeviceManagement from "../components/DeviceManagement";
 
 /* ── Sidebar tabs ── */
 const TABS = [
@@ -247,27 +248,7 @@ const PanelContent = ({
     case "devices": return (
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
         <SectionTitle title="Devices" />
-        <div className="bg-base-200 rounded-2xl border border-base-300 overflow-hidden">
-          {[
-            { name: "This device", detail: "Web Browser · Active now", active: true },
-            { name: "Chrome — Windows", detail: "Last active 2 hrs ago", active: false },
-          ].map((d, i) => (
-            <div key={i} className="flex items-center gap-4 px-5 py-4 border-b border-base-300 last:border-0">
-              <div className={`size-10 rounded-xl flex items-center justify-center ${d.active ? "bg-success/10" : "bg-base-300"}`}>
-                <Smartphone className={`size-5 ${d.active ? "text-success" : "text-base-content/40"}`} />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-base-content">{d.name}</p>
-                <p className="text-xs text-base-content/50">{d.detail}</p>
-              </div>
-              {d.active
-                ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-success/10 text-success">Current</span>
-                : <button className="text-xs text-error hover:underline">Remove</button>
-              }
-            </div>
-          ))}
-        </div>
-        <NavRow icon={Smartphone} label="Link a device" sub="Connect additional devices" />
+        <DeviceManagement />
       </div>
     );
 

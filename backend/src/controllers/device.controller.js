@@ -1,34 +1,13 @@
 import { v4 as uuidv4 } from "uuid";
 import QRSession from "../models/qrSession.model.js";
-import LinkedDevice from "../models/linkedDevice.model.js";
+import Session from "../models/linkedDevice.model.js";
 import User from "../models/user.model.js";
-import { generateToken } from "../lib/utils.js";
+import { generateToken, parseUA, getDeviceType } from "../lib/utils.js";
 import { io } from "../lib/socket.js";
 
 // UUID v4 format validator
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const isValidUUID = (id) => typeof id === "string" && UUID_REGEX.test(id);
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-const parseUA = (ua = "") => {
-  const ua_ = ua.toLowerCase();
-  let os = "Unknown OS";
-  let browser = "Unknown Browser";
-
-  if (ua_.includes("windows")) os = "Windows";
-  else if (ua_.includes("mac os")) os = "macOS";
-  else if (ua_.includes("android")) os = "Android";
-  else if (ua_.includes("iphone") || ua_.includes("ipad")) os = "iOS";
-  else if (ua_.includes("linux")) os = "Linux";
-
-  if (ua_.includes("chrome") && !ua_.includes("edg")) browser = "Chrome";
-  else if (ua_.includes("firefox")) browser = "Firefox";
-  else if (ua_.includes("safari") && !ua_.includes("chrome")) browser = "Safari";
-  else if (ua_.includes("edg")) browser = "Edge";
-  else if (ua_.includes("opera") || ua_.includes("opr")) browser = "Opera";
-
-  return { os, browser };
-};
 
 // ── GET /auth/qr-session — create a pending QR session ────────────────────
 export const createQRSession = async (req, res) => {
@@ -88,12 +67,15 @@ export const linkDevice = async (req, res) => {
 
     // Generate a new JWT as a cookie-based response (dummy token sent via socket)
     // We emit a socket event to the waiting tab to complete login
-    const { os, browser } = parseUA(req.headers["user-agent"]);
+    const ua = req.headers["user-agent"] || "";
+    const { os, browser } = parseUA(ua);
+    const deviceType = getDeviceType(ua);
+    const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
 
     // Register the new device
-    await LinkedDevice.findOneAndUpdate(
-      { userId, deviceId: sessionId },
-      { userId, deviceId: sessionId, deviceName: safeName || `${browser} on ${os}`, browser, os, lastActive: new Date(), isActive: true },
+    await Session.findOneAndUpdate(
+      { userId, sessionId },
+      { userId, sessionId, deviceName: safeName || `${browser} on ${os}`, deviceType, browser, os, ip, lastActive: new Date(), isActive: true },
       { upsert: true, new: true }
     );
 
@@ -126,37 +108,63 @@ export const getQRStatus = async (req, res) => {
   }
 };
 
-// ── GET /auth/linked-devices — list all devices for current user ───────────
+// ── GET /auth/linked-devices — list all sessions for current user ───────────
 export const getLinkedDevices = async (req, res) => {
   try {
-    const devices = await LinkedDevice.find({ userId: req.user._id, isActive: true })
+    const currentSessionId = req.sessionId;
+    const sessions = await Session.find({ userId: req.user._id, isActive: true })
       .sort({ lastActive: -1 });
-    res.status(200).json(devices);
+    
+    const sessionsWithCurrent = sessions.map(s => {
+      const obj = s.toObject();
+      obj.isCurrent = (obj.sessionId === currentSessionId);
+      return obj;
+    });
+
+    res.status(200).json({
+      sessions: sessionsWithCurrent,
+      totalActive: sessions.length
+    });
   } catch (err) {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
 
-// ── DELETE /auth/linked-devices/:deviceId — logout a device ───────────────
+// ── DELETE /auth/linked-devices/:sessionId — logout a session ───────────────
 export const removeLinkedDevice = async (req, res) => {
   try {
-    const { deviceId } = req.params;
-    await LinkedDevice.findOneAndUpdate(
-      { userId: req.user._id, deviceId },
+    const { deviceId: sessionId } = req.params; // parameter is named deviceId in routes
+    await Session.findOneAndUpdate(
+      { userId: req.user._id, sessionId },
       { isActive: false }
     );
-    res.status(200).json({ message: "Device removed" });
+
+    // Real-time: Notify all user sessions about the session removal
+    io.to(req.user._id.toString()).emit("session:removed", sessionId);
+
+    // Target the specific session for termination
+    io.to(sessionId).emit("session:terminated", { message: "Your session has been terminated remotely." });
+    
+    // Optional: Force disconnect the socket(s) in that session room after a short delay
+    // to allow the client to receive the event.
+    setTimeout(async () => {
+       const sockets = await io.in(sessionId).fetchSockets();
+       sockets.forEach(s => s.disconnect());
+    }, 500);
+
+    res.status(200).json({ message: "Session removed" });
   } catch (err) {
+    console.error("removeLinkedDevice error:", err);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
 
-// ── PATCH /auth/linked-devices/:deviceId — update last active ─────────────
+// ── PATCH /auth/linked-devices/:sessionId — update last active ─────────────
 export const updateDeviceActivity = async (req, res) => {
   try {
-    const { deviceId } = req.params;
-    await LinkedDevice.findOneAndUpdate(
-      { userId: req.user._id, deviceId },
+    const { deviceId: sessionId } = req.params;
+    await Session.findOneAndUpdate(
+      { userId: req.user._id, sessionId },
       { lastActive: new Date() }
     );
     res.status(200).json({ message: "Updated" });
@@ -186,7 +194,7 @@ export const qrLogin = async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found" });
 
     // Issue JWT cookie so the browser is authenticated
-    generateToken(user._id, res);
+    generateToken(user._id, res, session.sessionId);
 
     // Consume session so it can't be replayed
     await QRSession.deleteOne({ sessionId });

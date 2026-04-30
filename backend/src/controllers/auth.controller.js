@@ -1,8 +1,10 @@
-import { generateToken } from "../lib/utils.js";
+import { generateToken, parseUA, getDeviceType } from "../lib/utils.js";
 import User from "../models/user.model.js";
 import bcrypt from "bcryptjs";
 import cloudinary from "../lib/cloudinary.js";
 import Message from "../models/message.model.js";
+import Session from "../models/linkedDevice.model.js";
+import { v4 as uuidv4 } from "uuid";
 
 // ─── Dummy hash — used for constant-time comparison when user doesn't exist ─
 // Prevents timing-based username enumeration attacks.
@@ -46,7 +48,25 @@ export const signup = async (req, res) => {
     });
 
     if (newUser) {
-      generateToken(newUser._id, res);
+      const sessionId = uuidv4();
+      const ua = req.headers["user-agent"] || "";
+      const { os, browser } = parseUA(ua);
+      const deviceType = getDeviceType(ua);
+      const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
+      
+      await Session.create({
+        userId: newUser._id,
+        sessionId,
+        deviceName: `${browser} on ${os}`,
+        deviceType,
+        browser,
+        os,
+        ip,
+        lastActive: new Date(),
+        isActive: true
+      });
+
+      generateToken(newUser._id, res, sessionId);
       await newUser.save();
 
       res.status(201).json({
@@ -54,6 +74,7 @@ export const signup = async (req, res) => {
         fullName: newUser.fullName,
         email: newUser.email,
         profilePic: newUser.profilePic,
+        sessionId,
       });
     } else {
       res.status(400).json({ error: "Invalid user data" });
@@ -89,7 +110,29 @@ export const login = async (req, res) => {
       }
     }
 
-    generateToken(user._id, res);
+    const sessionId = uuidv4();
+    const ua = req.headers["user-agent"] || "";
+    const { os, browser } = parseUA(ua);
+    const deviceType = getDeviceType(ua);
+    const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress || "";
+
+    const newSession = await Session.create({
+      userId: user._id,
+      sessionId,
+      deviceName: `${browser} on ${os}`,
+      deviceType,
+      browser,
+      os,
+      ip,
+      lastActive: new Date(),
+      isActive: true
+    });
+
+    generateToken(user._id, res, sessionId);
+
+    // Real-time: Notify all user sessions about the new session
+    const { io } = await import("../lib/socket.js");
+    io.to(user._id.toString()).emit("session:added", newSession);
 
     res.status(200).json({
       _id: user._id,
@@ -97,6 +140,7 @@ export const login = async (req, res) => {
       email: user.email,
       profilePic: user.profilePic,
       deletionScheduledAt: user.deletionScheduledAt,
+      sessionId,
     });
   } catch (error) {
     console.error("Error in login controller", error.message);
@@ -104,8 +148,14 @@ export const login = async (req, res) => {
   }
 };
 
-export const logout = (req, res) => {
+export const logout = async (req, res) => {
   try {
+    if (req.sessionId) {
+      await Session.findOneAndUpdate(
+        { userId: req.user._id, sessionId: req.sessionId },
+        { isActive: false }
+      );
+    }
     res.cookie("jwt", "", { maxAge: 0 });
     res.status(200).json({ message: "Logged out successfully" });
   } catch (error) {
@@ -170,7 +220,10 @@ export const checkAuth = (req, res) => {
         return res.status(401).json({ error: "Unauthorized" });
       }
     }
-    res.status(200).json(req.user);
+    res.status(200).json({
+      ...req.user.toObject(),
+      deviceId: req.deviceId
+    });
   } catch (error) {
     console.error("Error in checkAuth controller", error.message);
     res.status(500).json({ error: "Internal Server Error" });

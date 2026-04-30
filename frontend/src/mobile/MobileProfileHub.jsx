@@ -9,6 +9,9 @@ import ImageCropModal from "../components/ImageCropModal";
 import PrivacyCustomUsersModal from "../components/PrivacyCustomUsersModal";
 import { useNavigate } from "react-router-dom";
 import { navigateMobile } from "./MobileLayout";
+import NotificationSettings from "../components/NotificationSettings";
+import PrivacySettings from "../components/PrivacySettings";
+import DeviceManagement from "../components/DeviceManagement";
 
 /* ── Sidebar tabs ── */
 const TABS = [
@@ -52,7 +55,7 @@ const ToggleRow = ({ label, sub, enabled, onChange }) => (
 );
 
 const SectionTitle = ({ title }) => (
-  <div className="mb-6">
+  <div className="mb-6 hidden">
     <h2 className="text-2xl font-bold text-base-content">{title}</h2>
     <div className="h-1 w-10 bg-primary rounded-full mt-2" />
   </div>
@@ -77,7 +80,6 @@ const ProfilePanelContent = ({
   onDeleteClick,
   photoVisibility, onOpenPhotoModal,
 }) => {
-  const [notifs, setNotifs] = useState({ messages: true, groups: true, sounds: true, preview: true });
   const VISIBILITY_LABELS = { everyone: "Everyone", nobody: "Nobody", custom: "Custom" };
   const avatarSrc = selectedImg || authUser?.profilePic || "/avatar.png";
   const joinDate = authUser?.createdAt?.split("T")[0] || "—";
@@ -215,81 +217,31 @@ const ProfilePanelContent = ({
     );
 
     case "privacy": return (
-      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
+      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         <SectionTitle title="Privacy" />
-        <section>
-          <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Who can see my info</h3>
-          <NavRow label="Last seen &amp; online" sub="Everyone" />
-          <button
-            onClick={onOpenPhotoModal}
-            className="w-full flex items-center gap-4 py-3.5 px-4 border-b border-base-300 last:border-0 hover:bg-base-200 transition-colors rounded-xl"
-          >
-            <div className="flex-1 text-left">
-              <p className="text-sm text-base-content">Profile photo</p>
-              <p className="text-xs text-base-content/50 mt-0.5">{getPhotoSubLabel()}</p>
-            </div>
-            <ChevronRight className="size-4 text-base-content/30" />
-          </button>
-          <NavRow label="About" sub="Everyone" />
-          <NavRow label="Status" sub="My contacts" />
-        </section>
-        <section>
-          <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Messaging</h3>
-          <ToggleRow label="Read receipts" sub="Send/receive blue ticks" enabled={notifs.messages} onChange={e => setNotifs(n => ({ ...n, messages: e.target.checked }))} />
-          <ToggleRow label="Online status" sub="Let others see when you're online" enabled={notifs.groups} onChange={e => setNotifs(n => ({ ...n, groups: e.target.checked }))} />
-        </section>
+        <PrivacySettings />
       </div>
     );
 
     case "notifications": return (
-      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
+      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         <SectionTitle title="Notifications" />
-        <section>
-          <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Alerts</h3>
-          <ToggleRow label="Message notifications" enabled={notifs.messages} onChange={e => setNotifs(n => ({ ...n, messages: e.target.checked }))} />
-          <ToggleRow label="Group notifications" enabled={notifs.groups} onChange={e => setNotifs(n => ({ ...n, groups: e.target.checked }))} />
-          <ToggleRow label="Notification sounds" enabled={notifs.sounds} onChange={e => setNotifs(n => ({ ...n, sounds: e.target.checked }))} />
-          <ToggleRow label="Show message preview" sub="Show content in notifications" enabled={notifs.preview} onChange={e => setNotifs(n => ({ ...n, preview: e.target.checked }))} />
-        </section>
+        <NotificationSettings />
       </div>
     );
 
     case "devices": return (
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
         <SectionTitle title="Devices" />
-        <div className="bg-base-200 rounded-2xl border border-base-300 overflow-hidden">
-          {[
-            { name: "This device", detail: "Web Browser · Active now", active: true },
-            { name: "Chrome — Windows", detail: "Last active 2 hrs ago", active: false },
-          ].map((d, i) => (
-            <div key={i} className="flex items-center gap-4 px-5 py-4 border-b border-base-300 last:border-0">
-              <div className={`size-10 rounded-xl flex items-center justify-center ${d.active ? "bg-success/10" : "bg-base-300"}`}>
-                <Smartphone className={`size-5 ${d.active ? "text-success" : "text-base-content/40"}`} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-base-content truncate">{d.name}</p>
-                <p className="text-xs text-base-content/50 truncate">{d.detail}</p>
-              </div>
-              {d.active
-                ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-success/10 text-success">Current</span>
-                : <button className="text-xs text-error hover:underline">Remove</button>
-              }
-            </div>
-          ))}
-        </div>
-        <NavRow
-          icon={Smartphone}
-          label="Link a device"
-          sub="Connect additional devices"
-          onClick={() => navigateMobile.fn?.("linkedDevices")}
-        />
+        <DeviceManagement />
       </div>
     );
 
     case "security": return (
-      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
+      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
         <SectionTitle title="Security" />
-        <section>
+        <div className="space-y-8">
+          <section>
           <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Authentication</h3>
           <NavRow icon={Lock} label="Two-step verification" sub="Add an extra layer of security" />
           <NavRow icon={Shield} label="Change password" sub="Update your login credentials" />
@@ -307,7 +259,8 @@ const ProfilePanelContent = ({
             </div>
             <ChevronRight className="size-4 opacity-0 group-hover:opacity-100 transition-opacity" />
           </button>
-        </section>
+          </section>
+        </div>
       </div>
     );
 

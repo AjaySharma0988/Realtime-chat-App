@@ -1,16 +1,18 @@
 import mongoose from "mongoose";
 
-const linkedDeviceSchema = new mongoose.Schema({
+const sessionSchema = new mongoose.Schema({
   userId:     { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, index: true },
-  deviceId:   { type: String, required: true },       // fingerprint or uuid stored on device
+  sessionId:  { type: String, required: true, unique: true }, // unique identifier for the session
   deviceName: { type: String, default: "Unknown Device" },
+  deviceType: { type: String, enum: ["mobile", "desktop", "tablet"], default: "desktop" },
   browser:    { type: String, default: "" },
   os:         { type: String, default: "" },
+  ip:         { type: String, default: "" },
   lastActive: { type: Date, default: Date.now },
   isActive:   { type: Boolean, default: true },
 }, { timestamps: true });
 
-linkedDeviceSchema.index({ userId: 1, deviceId: 1 }, { unique: true });
+sessionSchema.index({ userId: 1, isActive: 1 });
 
-const LinkedDevice = mongoose.model("LinkedDevice", linkedDeviceSchema);
-export default LinkedDevice;
+const Session = mongoose.model("Session", sessionSchema);
+export default Session;

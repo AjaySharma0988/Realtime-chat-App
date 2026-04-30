@@ -25,7 +25,7 @@ const ToggleRow = ({ label, sub, enabled, onChange }) => (
 );
 
 const SectionTitle = ({ title }) => (
-  <div className="mb-8">
+  <div className="mb-8 hidden lg:block">
     <h2 className="text-3xl font-bold text-base-content">{title}</h2>
     <div className="h-1 w-12 bg-primary rounded-full mt-2" />
   </div>
@@ -61,8 +61,9 @@ const PrivacySettings = () => {
 
   return (
     <>
-      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
-        <SectionTitle title="Privacy" />
+    <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <SectionTitle title="Privacy" />
+      <div className="space-y-8">
         <section>
           <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Who can see my info</h3>
           <NavRow label="Last seen &amp; online" sub="Everyone" />
@@ -109,6 +110,7 @@ const PrivacySettings = () => {
           <ToggleRow label="Online status" sub="Let others see when you're online" enabled={notifs.groups} onChange={e => setNotifs(n => ({ ...n, groups: e.target.checked }))} />
         </section>
       </div>
+    </div>
 
       {showCustomModal && (
         <PrivacyCustomUsersModal

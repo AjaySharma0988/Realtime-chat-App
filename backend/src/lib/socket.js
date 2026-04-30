@@ -4,6 +4,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import Call from "../models/call.model.js";
+import Session from "../models/linkedDevice.model.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -31,7 +32,7 @@ const io = new Server(server, {
 // ─── Socket Authentication Middleware ─────────────────────────────────────
 // Runs ONCE per connection. After this, socket.verifiedUserId is trusted forever.
 // No per-event re-authentication — this is the WebRTC-safe pattern.
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   try {
     let token = null;
 
@@ -65,7 +66,19 @@ io.use((socket, next) => {
 
     if (!decoded?.userId) return next(new Error("Unauthorized"));
 
+    // Real-time: check if this specific device/session is still active
+    const session = decoded.sessionId 
+      ? await Session.findOne({ 
+          userId: decoded.userId, 
+          sessionId: decoded.sessionId, 
+          isActive: true 
+        })
+      : true;
+
+    if (!session) return next(new Error("Unauthorized"));
+
     socket.verifiedUserId = decoded.userId;
+    socket.sessionId = decoded.sessionId;
     next();
   } catch (err) {
     console.error("[Socket:Auth] Unexpected error:", err.message);
@@ -107,10 +120,17 @@ io.on("connection", (socket) => {
   const userId = socket.verifiedUserId;
   console.log("[Socket] connected", socket.id, "uid:", userId);
 
-  socket.join(userId);
-  userSocketMap[userId] = socket.id;
 
-  // ── Delivery sweep: re-ring any pending call for this user ───────────────
+  socket.join(userId);
+  if (socket.sessionId) socket.join(socket.sessionId);
+  
+  // Track multiple connections for "online" status
+  if (!userSocketMap[userId]) {
+    userSocketMap[userId] = new Set();
+  }
+  userSocketMap[userId].add(socket.id);
+
+  io.emit("getOnlineUsers", Object.keys(userSocketMap).filter(id => userSocketMap[id].size > 0));
   for (const [callerId, session] of activeCalls.entries()) {
     if (session.to === userId && session.status === "ringing") {
       if (Date.now() - session.timestamp < 60_000) {
@@ -126,7 +146,7 @@ io.on("connection", (socket) => {
     }
   }
 
-  io.emit("getOnlineUsers", Object.keys(userSocketMap));
+  io.emit("getOnlineUsers", Object.keys(userSocketMap).filter(id => userSocketMap[id].size > 0));
 
   // ─── Chat Message Events ──────────────────────────────────────────────────
   socket.on("mark-delivered", async ({ messageId, senderId }) => {
@@ -450,8 +470,9 @@ io.on("connection", (socket) => {
   // When the call popup closes, the main window re-registers so the user
   // stays "online". userId is the server-verified value — always safe.
   socket.on("re-register", () => {
-    userSocketMap[userId] = socket.id;
-    io.emit("getOnlineUsers", Object.keys(userSocketMap));
+    if (!userSocketMap[userId]) userSocketMap[userId] = new Set();
+    userSocketMap[userId].add(socket.id);
+    io.emit("getOnlineUsers", Object.keys(userSocketMap).filter(id => userSocketMap[id].size > 0));
     console.log(`[Socket] Re-registered ${userId} → ${socket.id}`);
   });
 
@@ -467,10 +488,12 @@ io.on("connection", (socket) => {
       io.to(session.to).emit("call-ended"); // backward-compat alias
     }
 
-    // Only remove from online map if THIS socket is still the registered one.
-    // (Call popup opens a new socket with the same userId — don't evict it.)
-    if (userSocketMap[userId] === socket.id) {
-      delete userSocketMap[userId];
+    // Remove this specific socket from the user's connection set
+    if (userSocketMap[userId]) {
+      userSocketMap[userId].delete(socket.id);
+      if (userSocketMap[userId].size === 0) {
+        delete userSocketMap[userId];
+      }
       io.emit("getOnlineUsers", Object.keys(userSocketMap));
     }
   });
