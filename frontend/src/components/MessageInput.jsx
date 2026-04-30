@@ -167,6 +167,11 @@ const MessageInput = ({
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+
+          // Step 1: Optimized constraints for WhatsApp-level clarity
+          channelCount: 1,
+          sampleRate: 48000,
+          sampleSize: 16
         }
       };
       const stream = await navigator.mediaDevices.getUserMedia(audioConstraints);

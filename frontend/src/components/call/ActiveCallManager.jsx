@@ -171,11 +171,12 @@ export default function ActiveCallManager() {
           if (sender) {
             const params = sender.getParameters();
             if (!params.encodings?.length) params.encodings = [{}];
-            params.encodings[0].maxBitrate = 48000;
+            // Step 4: Enhance Opus codec (WhatsApp quality)
+            params.encodings[0].maxBitrate = 64000;
             params.encodings[0].priority = "high";
             params.encodings[0].networkPriority = "high";
             sender.setParameters(params).catch(() => { });
-            console.log("[WebRTC] Audio optimized: 48kbps, high priority");
+            console.log("[WebRTC] Audio optimized: 64kbps, high priority");
           }
         } catch { }
       }
@@ -212,7 +213,11 @@ export default function ActiveCallManager() {
       echoCancellation: true,
       noiseSuppression: true,
       autoGainControl: true,
-      // Removed rigid sampleRate/sampleSize to prevent resampling-induced suppression
+
+      // Step 1: Optimized constraints for WhatsApp-level clarity
+      channelCount: 1,
+      sampleRate: 48000,
+      sampleSize: 16
     };
     let reqVideo = callType === "video";
 
