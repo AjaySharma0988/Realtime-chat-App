@@ -12,16 +12,7 @@ import { getProfilePicUrl } from "../lib/utils";
 
 const CALL_DEBOUNCE_MS = 1500;
 
-// ── Tiny CSS tooltip (300ms hover delay, no library needed) ────────────────
-const Tip = ({ label, children }) => (
-  <div className="relative group/tip">
-    {children}
-    <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-neutral rounded-md whitespace-nowrap opacity-0 group-hover/tip:opacity-100 transition-opacity delay-300 z-50 shadow-lg">
-      {label}
-      <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral" />
-    </div>
-  </div>
-);
+import Tooltip from "./Tooltip";
 
 const ChatHeader = ({ onOpenContactPanel, onSearchToggle, isSearchOpen, onDeleteChat }) => {
   const { selectedUser, setSelectedUser } = useChatStore();
@@ -145,7 +136,7 @@ const ChatHeader = ({ onOpenContactPanel, onSearchToggle, isSearchOpen, onDelete
             `}
           >
             {/* Main click = video call */}
-            <Tip label={callDisabled ? "Already in a call" : isOnline ? "Start video call" : "Start video call (user may be offline)"}>
+            <Tooltip text={callDisabled ? "Already in a call" : isOnline ? "Start video call" : "Start video call (user may be offline)"}>
               <button
                 disabled={callDisabled}
                 onClick={(e) => handleCallClick(e, "video")}
@@ -161,10 +152,10 @@ const ChatHeader = ({ onOpenContactPanel, onSearchToggle, isSearchOpen, onDelete
                 <Video className="size-4 text-base-content/60 flex-shrink-0" />
                 <span className="text-xs font-medium text-base-content/70 hidden sm:block">Call</span>
               </button>
-            </Tip>
+            </Tooltip>
 
             {/* Dropdown arrow */}
-            <Tip label="More call options">
+            <Tooltip text="More call options">
               <button
                 disabled={callDisabled}
                 onClick={() => setShowCallDrop((v) => !v)}
@@ -172,7 +163,7 @@ const ChatHeader = ({ onOpenContactPanel, onSearchToggle, isSearchOpen, onDelete
               >
                 <ChevronDown className={`size-3.5 text-base-content/50 transition-transform ${showCallDrop ? "rotate-180" : ""}`} />
               </button>
-            </Tip>
+            </Tooltip>
           </div>
 
           {/* Call type dropdown */}
@@ -192,25 +183,25 @@ const ChatHeader = ({ onOpenContactPanel, onSearchToggle, isSearchOpen, onDelete
         </div>
 
         {/* ── Search ─────────────────────────────────────────────────────── */}
-        <Tip label="Search messages">
+        <Tooltip text="Search messages">
           <button
             onClick={() => onSearchToggle?.()}
             className={`p-2 rounded-full transition-colors ${isSearchOpen ? "bg-primary/15 text-primary" : "hover:bg-base-300 text-base-content/60"}`}
           >
             <Search className="size-5" />
           </button>
-        </Tip>
+        </Tooltip>
 
         {/* ── Three-dot menu ──────────────────────────────────────────────── */}
         <div className="relative" ref={menuRef}>
-          <Tip label="More options">
+          <Tooltip text="More options">
             <button
               onClick={() => setShowMenu((v) => !v)}
               className={`p-2 rounded-full transition-colors ${showMenu ? "bg-base-300" : "hover:bg-base-300 text-base-content/60"}`}
             >
               <MoreVertical className="size-5" />
             </button>
-          </Tip>
+          </Tooltip>
 
           {showMenu && (
             <div className="absolute right-0 top-11 w-60 rounded-xl shadow-2xl bg-base-200 border border-base-300 overflow-hidden z-50" style={{ animation: "wa-pop-in 0.12s ease-out" }}>

@@ -300,6 +300,11 @@ io.on("connection", (socket) => {
     handleEndCallCleanup(userId);
   });
 
+  socket.on("call:connected", ({ to }) => {
+    if (!isValidObjectId(to)) return;
+    io.to(to).emit("call:connected");
+  });
+
   // ─── WebRTC Call Reactions ─────────────────────────────────────────────
   socket.on("call:handRaise", ({ callId, raised }) => {
     if (!isValidCallId(callId)) return;

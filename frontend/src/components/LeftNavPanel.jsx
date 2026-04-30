@@ -9,17 +9,7 @@ import {
   Star,
 } from "lucide-react";
 
-// ── Tooltip wrapper ───────────────────────────────────────────────────────────
-const NavTip = ({ label, children }) => (
-  <div className="relative group/navtip">
-    {children}
-    <div className="pointer-events-none absolute left-full ml-3 top-1/2 -translate-y-1/2 px-2.5 py-1.5 bg-neutral text-neutral-content text-xs rounded-lg whitespace-nowrap opacity-0 group-hover/navtip:opacity-100 transition-all duration-150 delay-200 z-[200] shadow-xl border border-base-content/10">
-      {label}
-      {/* Arrow */}
-      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-neutral" />
-    </div>
-  </div>
-);
+import Tooltip from "./Tooltip";
 
 import { useAppStore } from "../store/useAppStore";
 
@@ -49,7 +39,7 @@ const LeftNavPanel = () => {
         {topItems.map((item) => {
           const isActive = location.pathname === "/chats" && activeView === item.id;
           return (
-            <NavTip key={item.id} label={item.label}>
+            <Tooltip key={item.id} position="right" text={item.label}>
               <button
                 onClick={() => {
                   setActiveView(item.id);
@@ -66,7 +56,7 @@ const LeftNavPanel = () => {
                   <span className="absolute left-0 w-0.5 rounded-r-full bg-primary" />
                 )}
               </button>
-            </NavTip>
+            </Tooltip>
           );
         })}
       </nav>
@@ -77,7 +67,7 @@ const LeftNavPanel = () => {
       {/* ── Bottom nav ───────────────────────────────────────────────────── */}
       <div className="flex flex-col items-center gap-1 pb-3 flex-shrink-0">
         {/* Settings */}
-        <NavTip label="Settings">
+        <Tooltip position="right" text="Settings">
           <button
             onClick={() => {
               setActiveView(null);
@@ -93,10 +83,10 @@ const LeftNavPanel = () => {
               <span className="absolute left-0 w-0.5 rounded-r-full bg-primary" />
             )}
           </button>
-        </NavTip>
+        </Tooltip>
 
         {/* Profile avatar */}
-        <NavTip label={authUser?.fullName || "Profile"}>
+        <Tooltip position="right" text={authUser?.fullName || "Profile"}>
           <button
             onClick={() => {
               setActiveView(null);
@@ -110,7 +100,7 @@ const LeftNavPanel = () => {
               className="size-8 rounded-lg object-cover"
             />
           </button>
-        </NavTip>
+        </Tooltip>
       </div>
     </div>
   );

@@ -8,9 +8,10 @@ import {
   Star, MessageCircle, Phone, Clock, Search,
 } from "lucide-react";
 import ImageCropModal from "../components/ImageCropModal";
-import PrivacyCustomUsersModal from "../components/PrivacyCustomUsersModal";
 import SidebarBase from "../components/SidebarBase";
 import { useNavigate } from "react-router-dom";
+import NotificationSettings from "../components/NotificationSettings";
+import PrivacySettings from "../components/PrivacySettings";
 
 /* ── Sidebar tabs ── */
 const TABS = [
@@ -33,7 +34,7 @@ const InfoRow = ({ icon: Icon, label, value }) => (
 );
 
 const NavRow = ({ icon: Icon, label, sub }) => (
-  <button className="w-full flex items-center gap-4 py-3.5 border-b border-base-300 last:border-0 hover:bg-base-200 -mx-4 px-4 transition-colors rounded-lg">
+  <button className="w-full flex items-center gap-4 py-3.5 px-4 border-b border-base-300 last:border-0 hover:bg-base-200 transition-colors rounded-xl">
     {Icon && <Icon className="size-5 text-primary flex-shrink-0" />}
     <div className="flex-1 text-left">
       <p className="text-sm text-base-content">{label}</p>
@@ -44,7 +45,7 @@ const NavRow = ({ icon: Icon, label, sub }) => (
 );
 
 const ToggleRow = ({ label, sub, enabled, onChange }) => (
-  <div className="flex items-center justify-between py-3.5 border-b border-base-300 last:border-0">
+  <div className="flex items-center justify-between py-3.5 px-4 border-b border-base-300 last:border-0 rounded-xl hover:bg-base-200 transition-colors">
     <div>
       <p className="text-sm text-base-content">{label}</p>
       {sub && <p className="text-xs text-base-content/50 mt-0.5">{sub}</p>}
@@ -76,20 +77,8 @@ const PanelContent = ({
   tab, authUser, selectedImg, editingName, nameValue,
   setNameValue, setEditingName, handleSaveName,
   editingAbout, aboutValue, setAboutValue, setEditingAbout, handleSaveAbout,
-  isUpdatingProfile, isCropLoading, handleFileSelect,
-  onDeleteClick,
-  photoVisibility, onOpenPhotoModal,
+  isUpdatingProfile, isCropLoading, handleFileSelect, onDeleteClick
 }) => {
-  const [notifs, setNotifs] = useState({ messages: true, groups: true, sounds: true, preview: true });
-
-  const VISIBILITY_LABELS = { everyone: "Everyone", nobody: "Nobody", custom: "Custom" };
-
-  const getPhotoSubLabel = () => {
-    if (photoVisibility !== "custom") return VISIBILITY_LABELS[photoVisibility] || "Everyone";
-    const count = (authUser?.privacy?.allowedUsers || []).length;
-    return `Custom (${count} selected)`;
-  };
-
   const avatarSrc = selectedImg || authUser?.profilePic || "/avatar.png";
   const joinDate = authUser?.createdAt?.split("T")[0] || "—";
 
@@ -244,44 +233,13 @@ const PanelContent = ({
     );
 
     /* ── PRIVACY ── */
-    case "privacy": return (
-      <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
-        <SectionTitle title="Privacy" />
-        <section>
-          <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Who can see my info</h3>
-          <NavRow label="Last seen &amp; online" sub="Everyone" />
-          <button
-            onClick={onOpenPhotoModal}
-            className="w-full flex items-center gap-4 py-3.5 border-b border-base-300 last:border-0 hover:bg-base-200 -mx-4 px-4 transition-colors rounded-lg"
-          >
-            <div className="flex-1 text-left">
-              <p className="text-sm text-base-content">Profile photo</p>
-              <p className="text-xs text-base-content/50 mt-0.5">{getPhotoSubLabel()}</p>
-            </div>
-            <ChevronRight className="size-4 text-base-content/30" />
-          </button>
-          <NavRow label="About" sub="Everyone" />
-          <NavRow label="Status" sub="My contacts" />
-        </section>
-        <section>
-          <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Messaging</h3>
-          <ToggleRow label="Read receipts" sub="Send/receive blue ticks" enabled={notifs.messages} onChange={e => setNotifs(n => ({ ...n, messages: e.target.checked }))} />
-          <ToggleRow label="Online status" sub="Let others see when you're online" enabled={notifs.groups} onChange={e => setNotifs(n => ({ ...n, groups: e.target.checked }))} />
-        </section>
-      </div>
-    );
+    case "privacy": return <PrivacySettings />;
 
     /* ── NOTIFICATIONS ── */
     case "notifications": return (
       <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
         <SectionTitle title="Notifications" />
-        <section>
-          <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Alerts</h3>
-          <ToggleRow label="Message notifications" enabled={notifs.messages} onChange={e => setNotifs(n => ({ ...n, messages: e.target.checked }))} />
-          <ToggleRow label="Group notifications" enabled={notifs.groups} onChange={e => setNotifs(n => ({ ...n, groups: e.target.checked }))} />
-          <ToggleRow label="Notification sounds" enabled={notifs.sounds} onChange={e => setNotifs(n => ({ ...n, sounds: e.target.checked }))} />
-          <ToggleRow label="Show message preview" sub="Show content in notifications" enabled={notifs.preview} onChange={e => setNotifs(n => ({ ...n, preview: e.target.checked }))} />
-        </section>
+        <NotificationSettings />
       </div>
     );
 
@@ -361,34 +319,6 @@ const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState("profile");
   const [searchQuery, setSearchQuery] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showPhotoModal, setShowPhotoModal] = useState(false);
-  const [showCustomModal, setShowCustomModal] = useState(false);
-  const [photoVisibility, setPhotoVisibility] = useState(
-    authUser?.privacy?.profilePhotoVisibility || "everyone"
-  );
-
-  const PHOTO_OPTIONS = [
-    { label: "Everyone", value: "everyone" },
-    { label: "Nobody", value: "nobody" },
-    { label: "Custom", value: "custom" },
-  ];
-
-  const handlePhotoVisibilitySelect = async (value) => {
-    setShowPhotoModal(false);
-    if (value === "custom") {
-      // Don't save yet — open the user picker first
-      setShowCustomModal(true);
-      return;
-    }
-    setPhotoVisibility(value);
-    await updatePrivacy({ profilePhotoVisibility: value });
-  };
-
-  const handleCustomSave = (selectedIds) => {
-    setPhotoVisibility("custom");
-    setShowCustomModal(false);
-    // state is already saved in store by PrivacyCustomUsersModal
-  };
 
   const filteredTabs = TABS.filter((t) =>
     t.label.toLowerCase().includes(searchQuery.toLowerCase())
@@ -536,8 +466,6 @@ const ProfilePage = () => {
             isCropLoading={isCropLoading}
             handleFileSelect={handleFileSelect}
             onDeleteClick={() => setShowDeleteModal(true)}
-            photoVisibility={photoVisibility}
-            onOpenPhotoModal={() => setShowPhotoModal(true)}
           />
 
           {/* Footer */}
@@ -594,46 +522,6 @@ const ProfilePage = () => {
             </div>
           </div>
         </div>
-      )}
-      {/* Profile Photo Visibility Modal */}
-      {showPhotoModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-base-100 rounded-3xl w-full max-w-sm shadow-2xl border border-base-300 overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200">
-            <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-base-content">Who can see my profile photo</h3>
-                <button onClick={() => setShowPhotoModal(false)} className="p-2 rounded-full hover:bg-base-200 transition-colors">
-                  <CloseIcon className="size-5 text-base-content/40" />
-                </button>
-              </div>
-              <div className="space-y-2">
-                {PHOTO_OPTIONS.map(({ label, value }) => (
-                  <button
-                    key={value}
-                    onClick={() => handlePhotoVisibilitySelect(value)}
-                    className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all border ${photoVisibility === value
-                        ? "bg-primary/10 border-primary/30 text-primary"
-                        : "border-base-300 hover:bg-base-200 text-base-content"
-                      }`}
-                  >
-                    <div className={`size-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${photoVisibility === value ? "border-primary" : "border-base-content/30"
-                      }`}>
-                      {photoVisibility === value && <div className="size-2.5 rounded-full bg-primary" />}
-                    </div>
-                    <span className="text-sm font-medium">{label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {showCustomModal && (
-        <PrivacyCustomUsersModal
-          onClose={() => setShowCustomModal(false)}
-          onSave={handleCustomSave}
-          initialSelected={authUser?.privacy?.allowedUsers || []}
-        />
       )}
     </div>
   );

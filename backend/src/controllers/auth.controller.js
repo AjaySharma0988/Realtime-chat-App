@@ -238,3 +238,45 @@ export const updatePrivacySettings = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+export const updateNotificationSettings = async (req, res) => {
+  try {
+    const { popupsEnabled, soundEnabled, soundType, customSoundUrl } = req.body;
+    const userId = req.user._id;
+
+    const updateData = {};
+    if (popupsEnabled !== undefined) updateData["notificationSettings.popupsEnabled"] = popupsEnabled;
+    if (soundEnabled !== undefined) updateData["notificationSettings.soundEnabled"] = soundEnabled;
+    if (soundType !== undefined) {
+      if (!["default", "custom", "mute"].includes(soundType)) {
+        return res.status(400).json({ error: "Invalid sound type" });
+      }
+      updateData["notificationSettings.soundType"] = soundType;
+    }
+
+    if (customSoundUrl !== undefined) {
+      // Basic check for audio data URI
+      if (customSoundUrl && /^data:audio\/(mp3|wav|ogg|mpeg|webm|mp4);base64,/.test(customSoundUrl)) {
+        const uploadResponse = await cloudinary.uploader.upload(customSoundUrl, {
+          folder: "notification-sounds",
+          resource_type: "video", // Cloudinary treats audio as video for uploads
+        });
+        updateData["notificationSettings.customSoundUrl"] = uploadResponse.secure_url;
+      } else {
+         updateData["notificationSettings.customSoundUrl"] = customSoundUrl;
+      }
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true }
+    ).select("-password");
+
+    res.status(200).json(updatedUser);
+  } catch (error) {
+    console.error("Error in updateNotificationSettings controller:", error.message);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
