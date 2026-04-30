@@ -507,7 +507,7 @@ const CallPage = () => {
         clearInterval(timerRef.current);
         timerRef.current = setInterval(() => setDuration((d) => d + 1), 1000);
 
-        // ── Boost audio quality once connected ─────────────────────────────────
+        // ── Boost audio quality (WhatsApp-level quality) once connected ─────────
         try {
           const audioSender = pc.getSenders().find((s) => s.track?.kind === "audio");
           if (audioSender) {
@@ -515,10 +515,11 @@ const CallPage = () => {
             if (!params.encodings || params.encodings.length === 0) {
               params.encodings = [{}];
             }
-            params.encodings[0].maxBitrate = 128_000;
+            params.encodings[0].maxBitrate = 48000;
             params.encodings[0].priority = "high";
             params.encodings[0].networkPriority = "high";
             audioSender.setParameters(params).catch(() => { });
+            console.log("[WebRTC] Audio optimized: 48kbps, high priority");
           }
         } catch { }
       }
@@ -591,7 +592,11 @@ const CallPage = () => {
   // ── Get user media ────────────────────────────────────────────────────────
   const getMedia = async () => {
     let stream = null;
-    let reqAudio = true;
+    let reqAudio = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    };
     let reqVideo = callType === "video" ? {
       width: { ideal: 1280 },
       height: { ideal: 720 },
@@ -641,6 +646,15 @@ const CallPage = () => {
       }
     }
 
+    // Verify and optimize audio track settings (STEP 2)
+    const audioTrack = stream?.getAudioTracks()[0];
+    if (audioTrack) {
+      if ("contentHint" in audioTrack) {
+        audioTrack.contentHint = "speech";
+      }
+      console.log("[WebRTC] Audio Track Settings (Optimized):", audioTrack.getSettings());
+    }
+
     localStream.current = stream;
     if (localVidRef.current && localVidRef.current.srcObject !== stream) {
       localVidRef.current.srcObject = stream;
@@ -661,6 +675,21 @@ const CallPage = () => {
     const pc = buildPC(sock);
     pcRef.current = pc;
     stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+
+    // Prioritize Opus codec in SDP
+    if (typeof RTCRtpSender !== "undefined" && RTCRtpSender.getCapabilities) {
+      const codecs = RTCRtpSender.getCapabilities("audio")?.codecs;
+      if (codecs) {
+        const opusCodecs = codecs.filter(c => c.mimeType.toLowerCase() === "audio/opus");
+        if (opusCodecs.length > 0) {
+          pc.getTransceivers().forEach(t => {
+            if (t.sender && t.sender.track && t.sender.track.kind === "audio" && t.setCodecPreferences) {
+              try { t.setCodecPreferences(opusCodecs); console.log("[WebRTC] Prioritized Opus codec"); } catch(e) {}
+            }
+          });
+        }
+      }
+    }
 
     // Ensure we can receive media even if we don't send any
     if (stream.getAudioTracks().length === 0) {
@@ -704,6 +733,21 @@ const CallPage = () => {
     // Add tracks or transceivers to ensure media flow
     if (stream.getTracks().length > 0) {
       stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    }
+
+    // Prioritize Opus codec in SDP
+    if (typeof RTCRtpSender !== "undefined" && RTCRtpSender.getCapabilities) {
+      const codecs = RTCRtpSender.getCapabilities("audio")?.codecs;
+      if (codecs) {
+        const opusCodecs = codecs.filter(c => c.mimeType.toLowerCase() === "audio/opus");
+        if (opusCodecs.length > 0) {
+          pc.getTransceivers().forEach(t => {
+            if (t.sender && t.sender.track && t.sender.track.kind === "audio" && t.setCodecPreferences) {
+              try { t.setCodecPreferences(opusCodecs); console.log("[WebRTC] Prioritized Opus codec"); } catch(e) {}
+            }
+          });
+        }
+      }
     }
     
     // Receiver transceivers to ensure we can receive even if we don't send

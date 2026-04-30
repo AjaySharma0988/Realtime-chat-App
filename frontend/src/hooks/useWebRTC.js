@@ -86,13 +86,26 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
     setStatus("initializing");
 
     try {
-      // 1. Get user media
+      // 1. Get user media with optimized audio constraints (WhatsApp-like quality)
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
         video: callType === "video",
       });
       setLocalStream(stream);
       localStreamRef.current = stream;
+
+      // Verify and optimize audio track settings
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        if ("contentHint" in audioTrack) {
+          audioTrack.contentHint = "speech";
+        }
+        console.log("[WebRTC] Audio Track Settings (Optimized):", audioTrack.getSettings());
+      }
 
       // 2. Create peer connection with fresh TURN credentials (1-hour TTL)
       // fetchIceServers() fetches backend-signed credentials — prevents 60 s TURN expiry.
@@ -100,8 +113,47 @@ export const useWebRTC = ({ socket, callType, peerId, isInitiator, initialOffer 
       const pc = new RTCPeerConnection(iceConfig);
       pcRef.current = pc;
 
-      // Add local tracks
-      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      // Add local tracks and enhance Opus codec for audio
+      stream.getTracks().forEach((t) => {
+        const sender = pc.addTrack(t, stream);
+        
+        if (t.kind === "audio") {
+          // Enhance Opus codec by forcing higher bitrate
+          try {
+            const params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}];
+            }
+            params.encodings[0].maxBitrate = 48000;
+            params.encodings[0].priority = "high";
+            params.encodings[0].networkPriority = "high";
+            sender.setParameters(params);
+            console.log("[WebRTC] Audio optimized: 48kbps, high priority");
+          } catch (e) {
+            console.warn("[WebRTC] Failed to enhance audio bitrate:", e);
+          }
+        }
+      });
+
+      // Prioritize Opus codec in SDP (if browser supports setCodecPreferences)
+      if (typeof RTCRtpSender !== "undefined" && RTCRtpSender.getCapabilities) {
+        const codecs = RTCRtpSender.getCapabilities("audio")?.codecs;
+        if (codecs) {
+          const opusCodecs = codecs.filter(c => c.mimeType.toLowerCase() === "audio/opus");
+          if (opusCodecs.length > 0) {
+            pc.getTransceivers().forEach(t => {
+              if (t.sender && t.sender.track && t.sender.track.kind === "audio" && t.setCodecPreferences) {
+                try {
+                  t.setCodecPreferences(opusCodecs);
+                  console.log("[WebRTC] Prioritized Opus codec");
+                } catch(e) {
+                  console.warn("[WebRTC] setCodecPreferences failed:", e);
+                }
+              }
+            });
+          }
+        }
+      }
 
       // Remote track → remote stream
       pc.ontrack = (e) => {

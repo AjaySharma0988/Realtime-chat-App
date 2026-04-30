@@ -162,7 +162,23 @@ const MessageInput = ({
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioConstraints = {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        }
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
+      
+      // Verify and optimize audio track settings
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        if ("contentHint" in audioTrack) {
+          audioTrack.contentHint = "speech";
+        }
+        console.log("[Voice Message] Optimized Audio Settings:", audioTrack.getSettings());
+      }
       streamRef.current = stream;
       chunksRef.current = [];
       isCancelledRef.current = false;
