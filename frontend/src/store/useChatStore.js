@@ -345,6 +345,48 @@ export const useChatStore = create((set, get) => ({
         socket.emit("mark-delivered", { messageId: newMessage._id, senderId: newMessage.senderId });
       }
 
+      // ── Advanced Notification System ──
+      if (!isCurrentlyChatting || isTabHidden) {
+        const authUser = useAuthStore.getState().authUser;
+        const settings = authUser?.notificationSettings || { popupsEnabled: true, soundEnabled: true, soundType: "default" };
+        const sender = get().users.find(u => u._id === newMessage.senderId);
+        const senderName = sender?.fullName || "New Message";
+        const messageBody = newMessage.text || (newMessage.image ? "Sent an image" : "Sent a message");
+
+        if (settings.popupsEnabled) {
+          if (Notification.permission === "granted" && isTabHidden) {
+            const notification = new Notification(senderName, {
+              body: messageBody,
+              icon: sender?.profilePic || "/avatar.png",
+              silent: true // NO SYSTEM SOUND
+            });
+            notification.onclick = () => {
+              window.focus();
+              if (sender) get().setSelectedUser(sender);
+            };
+          } else if (Notification.permission !== "granted") {
+            toast(`New message from ${senderName}`, { icon: "💬" });
+          }
+        }
+
+        if (settings.soundEnabled && settings.soundType !== "mute") {
+          try {
+            let audio;
+            if (settings.soundType === "default") {
+              audio = new Audio("/sounds/Message sound.mp3");
+            } else if (settings.soundType === "custom" && settings.customSoundUrl) {
+              audio = new Audio(settings.customSoundUrl);
+            }
+            if (audio) {
+              audio.play().catch(e => console.log("Audio play blocked by browser", e));
+            }
+          } catch (e) {
+            console.error("Failed to play notification sound", e);
+          }
+        }
+      }
+      // ──────────────────────────────────
+
       const messageToStore = { ...newMessage, status: newStatus };
       idb.saveMessage(messageToStore, me);
 

@@ -40,6 +40,16 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    notificationSettings: {
+      popupsEnabled: { type: Boolean, default: true },
+      soundEnabled: { type: Boolean, default: true },
+      soundType: {
+        type: String,
+        enum: ["default", "custom", "mute"],
+        default: "default",
+      },
+      customSoundUrl: { type: String, default: "" },
+    },
   },
   { timestamps: true }
 );

@@ -1,5 +1,5 @@
 import express from "express";
-import { checkAuth, login, logout, signup, updateProfile, deleteAccount, restoreAccount, updatePrivacySettings } from "../controllers/auth.controller.js";
+import { checkAuth, login, logout, signup, updateProfile, deleteAccount, restoreAccount, updatePrivacySettings, updateNotificationSettings } from "../controllers/auth.controller.js";
 import {
   createQRSession,
   linkDevice,
@@ -19,6 +19,7 @@ router.post("/logout", logout);
 
 router.put("/update-profile", protectRoute, updateProfile);
 router.put("/privacy", protectRoute, updatePrivacySettings);
+router.put("/notifications", protectRoute, updateNotificationSettings);
 router.get("/check", protectRoute, checkAuth);
 router.delete("/delete-account", protectRoute, deleteAccount);
 router.post("/restore-account", protectRoute, restoreAccount);

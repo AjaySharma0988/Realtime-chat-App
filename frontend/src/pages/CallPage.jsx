@@ -501,6 +501,7 @@ const CallPage = () => {
         
         // ✅ FORCE UI TRANSITION
         setStatus("active");
+        sock.emit("call:connected", { to: peerId });
         console.log("CALL STATUS: active (ICE)");
 
         setWasConnected(true);
@@ -547,6 +548,7 @@ const CallPage = () => {
       if (s === "connected") {
         // ✅ FORCE UI TRANSITION
         setStatus("active");
+        sock.emit("call:connected", { to: peerId });
         console.log("CALL STATUS: active (STATE)");
         setWasConnected(true);
       }
@@ -790,6 +792,7 @@ const CallPage = () => {
     sock.on("call-accepted-by-peer", async ({ answer }) => {
       if (!pcRef.current || cleanedUp.current) return;
       console.log("[WebRTC] Answer received");
+      setStatus("connecting");
       try {
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
         console.log("[WebRTC] Answer received & set");
@@ -835,6 +838,12 @@ const CallPage = () => {
     sock.on("call-rejected", () => { setStatus("rejected"); cleanup(false); });
     sock.on("call-timeout", () => { setStatus("timeout"); cleanup(false); });
     sock.on("call:pong", () => { /* heartbeat ack — socket is alive */ });
+    sock.on("call:connected", () => {
+      console.log("[WebRTC] Peer signaled active state, syncing...");
+      setStatus("active");
+      setNetStatus("good");
+      setWasConnected(true);
+    });
 
     // ── Reaction syncing (Hand Raise & Emoji) ────────
     sock.on("call:handRaise", ({ userId: senderId, raised }) => {
@@ -1267,6 +1276,24 @@ const CallPage = () => {
       }
     }
   }, [remoteCameraStream]);
+
+  // ── 30-Second Connection Watchdog ──────────────────────────────────────────
+  useEffect(() => {
+    let watchdogTimer = null;
+
+    const isNonConnectedState = status === "connecting" || netStatus === "reconnecting" || netStatus === "poor";
+    
+    if (isNonConnectedState) {
+      console.log(`[Watchdog] Started 30s timer for state: status=${status}, netStatus=${netStatus}`);
+      watchdogTimer = setTimeout(() => {
+        console.error("[Watchdog] 30 seconds passed without connection. Ending call.");
+        setErrorMsg("Connection timeout");
+        cleanup(true);
+      }, 30000);
+    }
+
+    return () => clearTimeout(watchdogTimer);
+  }, [status, netStatus, cleanup]);
 
   const isEnded = ["ended", "rejected", "timeout"].includes(status);
   const isActive = status === "active";

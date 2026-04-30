@@ -32,7 +32,7 @@ const PREVIEW_MESSAGES = [
 ];
 
 const ToggleRow = ({ label, sub, enabled, onChange }) => (
-  <div className="flex items-center justify-between py-3.5 border-b border-base-300 last:border-0">
+  <div className="flex items-center justify-between py-3.5 px-4 border-b border-base-300 last:border-0 rounded-xl hover:bg-base-200 transition-colors">
     <div>
       <p className="text-sm text-base-content">{label}</p>
       {sub && <p className="text-xs text-base-content/50 mt-0.5">{sub}</p>}
@@ -47,7 +47,7 @@ const ToggleRow = ({ label, sub, enabled, onChange }) => (
 );
 
 const NavRow = ({ icon: Icon, label, sub }) => (
-  <button className="w-full flex items-center gap-4 py-3.5 border-b border-base-300 last:border-0 hover:bg-base-200 -mx-4 px-4 transition-colors">
+  <button className="w-full flex items-center gap-4 py-3.5 px-4 border-b border-base-300 last:border-0 hover:bg-base-200 transition-colors rounded-xl">
     {Icon && <Icon className="size-5 text-primary flex-shrink-0" />}
     <div className="flex-1 text-left">
       <p className="text-sm text-base-content">{label}</p>

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { THEMES } from "../constants";
 import { useThemeStore } from "../store/useThemeStore";
 import {
@@ -12,6 +12,8 @@ import SidebarBase from "../components/SidebarBase";
 import { useAppStore } from "../store/useAppStore";
 import { useAuthStore } from "../store/useAuthStore";
 import { Trash2, AlertTriangle, X as CloseIcon } from "lucide-react";
+import NotificationSettings from "../components/NotificationSettings";
+import PrivacySettings from "../components/PrivacySettings";
 
 
 const PREVIEW_MESSAGES = [
@@ -31,7 +33,7 @@ const SECTIONS = [
 
 // ── Generic toggle row ──────────────────────────────────────────────────────
 const ToggleRow = ({ label, sub, enabled, onChange }) => (
-  <div className="flex items-center justify-between py-3.5 border-b border-base-300 last:border-0">
+  <div className="flex items-center justify-between py-3.5 px-4 border-b border-base-300 last:border-0 rounded-xl hover:bg-base-200 transition-colors">
     <div>
       <p className="text-sm text-base-content">{label}</p>
       {sub && <p className="text-xs text-base-content/50 mt-0.5">{sub}</p>}
@@ -47,7 +49,7 @@ const ToggleRow = ({ label, sub, enabled, onChange }) => (
 
 // ── Generic nav row ─────────────────────────────────────────────────────────
 const NavRow = ({ icon: Icon, label, sub }) => (
-  <button className="w-full flex items-center gap-4 py-3.5 border-b border-base-300 last:border-0 hover:bg-base-200 -mx-4 px-4 transition-colors rounded-lg">
+  <button className="w-full flex items-center gap-4 py-3.5 px-4 border-b border-base-300 last:border-0 hover:bg-base-200 transition-colors rounded-xl">
     {Icon && <Icon className="size-5 text-primary flex-shrink-0" />}
     <div className="flex-1 text-left">
       <p className="text-sm text-base-content">{label}</p>
@@ -59,12 +61,8 @@ const NavRow = ({ icon: Icon, label, sub }) => (
 
 // ── Per-section content ─────────────────────────────────────────────────────
 const SectionContent = ({ section, theme, setTheme, chatPattern, setChatPattern, customBgImage, setCustomBgImage, onDeleteClick }) => {
-  const [notifs, setNotifs] = useState({
-    messages: true,
-    groups: true,
-    sounds: true,
-    preview: true,
-  });
+  const { authUser, updateNotifications } = useAuthStore();
+
   const [privacy, setPrivacy] = useState({
     readReceipts: true,
     onlineStatus: true,
@@ -163,50 +161,13 @@ const SectionContent = ({ section, theme, setTheme, chatPattern, setChatPattern,
       );
 
     case "privacy":
-      return (
-        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <SectionHeader title="Privacy" />
-          <div className="space-y-8">
-            <section>
-              <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Who can see my info</h3>
-              <NavRow label="Last seen and online" sub="Everyone" />
-              <NavRow label="Profile photo" sub="Everyone" />
-              <NavRow label="About" sub="Everyone" />
-              <NavRow label="Status" sub="My contacts" />
-            </section>
-
-            <section>
-              <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Messaging</h3>
-              <ToggleRow
-                label="Read receipts"
-                sub="If turned off, you won't send or receive blue ticks"
-                enabled={privacy.readReceipts}
-                onChange={(e) => setPrivacy((p) => ({ ...p, readReceipts: e.target.checked }))}
-              />
-              <ToggleRow
-                label="Online status"
-                sub="Allow others to see when you're online"
-                enabled={privacy.onlineStatus}
-                onChange={(e) => setPrivacy((p) => ({ ...p, onlineStatus: e.target.checked }))}
-              />
-            </section>
-          </div>
-        </div>
-      );
+      return <PrivacySettings />;
 
     case "notifications":
       return (
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
           <SectionHeader title="Notifications" />
-          <div className="space-y-6">
-            <section>
-              <h3 className="text-xs font-semibold text-base-content/50 uppercase tracking-wider mb-4">Alerts</h3>
-              <ToggleRow label="Message notifications" enabled={notifs.messages} onChange={(e) => setNotifs((n) => ({ ...n, messages: e.target.checked }))} />
-              <ToggleRow label="Group notifications" enabled={notifs.groups} onChange={(e) => setNotifs((n) => ({ ...n, groups: e.target.checked }))} />
-              <ToggleRow label="Notification sounds" enabled={notifs.sounds} onChange={(e) => setNotifs((n) => ({ ...n, sounds: e.target.checked }))} />
-              <ToggleRow label="Show message preview" sub="Show content in notifications" enabled={notifs.preview} onChange={(e) => setNotifs((n) => ({ ...n, preview: e.target.checked }))} />
-            </section>
-          </div>
+          <NotificationSettings />
         </div>
       );
 
@@ -431,9 +392,16 @@ const SectionContent = ({ section, theme, setTheme, chatPattern, setChatPattern,
 // ── Main Settings Page ──────────────────────────────────────────────────────
 const SettingsPage = () => {
   const { theme, setTheme, chatPattern, setChatPattern, customBgImage, setCustomBgImage } = useThemeStore();
-  const [activeSection, setActiveSection] = useState("chats");
+  const location = useLocation();
+  const [activeSection, setActiveSection] = useState(location.state?.section || "chats");
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (location.state?.section) {
+      setActiveSection(location.state.section);
+    }
+  }, [location.state]);
   const { setActiveView } = useAppStore();
   const { deleteAccount } = useAuthStore();
   const [showDeleteModal, setShowDeleteModal] = useState(false);

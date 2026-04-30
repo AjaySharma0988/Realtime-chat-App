@@ -8,7 +8,7 @@ const BASE_URL =
 
 // Only these fields are safe to cache in localStorage.
 // Never store tokens, passwords, or backend-internal fields.
-const SAFE_USER_FIELDS = ["_id", "fullName", "email", "profilePic", "about", "privacy", "deletionScheduledAt"];
+const SAFE_USER_FIELDS = ["_id", "fullName", "email", "profilePic", "about", "privacy", "deletionScheduledAt", "notificationSettings"];
 const persistUser = (user) => {
   const safe = {};
   for (const key of SAFE_USER_FIELDS) {
@@ -122,6 +122,18 @@ export const useAuthStore = create((set, get) => ({
     } catch (error) {
       console.log("error in updatePrivacy:", error);
       toast.error(error.response?.data?.message || "Failed to save privacy settings");
+    }
+  },
+
+  updateNotifications: async (data) => {
+    try {
+      const res = await axiosInstance.put("/auth/notifications", data);
+      set({ authUser: res.data });
+      persistUser(res.data);
+      toast.success("Notification settings saved");
+    } catch (error) {
+      console.log("error in updateNotifications:", error);
+      toast.error(error.response?.data?.message || "Failed to save notification settings");
     }
   },
 
