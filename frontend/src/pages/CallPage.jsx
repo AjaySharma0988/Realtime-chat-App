@@ -651,17 +651,19 @@ const CallPage = () => {
 
     pc.oniceconnectionstatechange = () => {
       const s = pc.iceConnectionState;
-      console.log("ICE STATE:", s);
+      console.log(`[WebRTC] ICE Connection State: ${s}`);
 
       if (s === "connected" || s === "completed") {
         clearTimeout(disconnectTimer);
         iceRestartCountRef.current = 0;
         setNetStatus("good");
         
-        // ✅ FORCE UI TRANSITION
-        setStatus("active");
-        sock.emit("call:connected", { to: peerId });
-        console.log("CALL STATUS: active (ICE)");
+        // Ensure UI transitions to active
+        if (status !== "active") {
+          console.log("[WebRTC] ICE Connection established — forcing 'active' status");
+          setStatus("active");
+          sock.emit("call:connected", { to: peerId });
+        }
 
         setWasConnected(true);
         clearInterval(timerRef.current);
@@ -675,7 +677,6 @@ const CallPage = () => {
             if (!params.encodings || params.encodings.length === 0) {
               params.encodings = [{}];
             }
-            // Step 4: Enhance Opus codec (WhatsApp quality)
             params.encodings[0].maxBitrate = 64000;
             params.encodings[0].priority = "high";
             params.encodings[0].networkPriority = "high";
@@ -683,43 +684,44 @@ const CallPage = () => {
             console.log("[WebRTC] Audio optimized: 64kbps, high priority");
           }
         } catch { }
-      }
-
-      if (s === "disconnected") {
-        // Give it 5 seconds before acting — often self-heals
+      } 
+      else if (s === "disconnected") {
         setNetStatus("poor");
         disconnectTimer = setTimeout(() => {
-          if (pcRef.current?.iceConnectionState === "disconnected") {
-            console.log("[ICE] Still disconnected after 5s — restarting");
+          if (pc.iceConnectionState === "disconnected") {
+            console.warn("[WebRTC] ICE Disconnected for 5s — attempting restart");
             attemptIceRestart();
           }
-        }, 5_000);
+        }, 5000);
       }
-
-      if (s === "failed") {
-        clearTimeout(disconnectTimer);
+      else if (s === "failed") {
+        console.error("[WebRTC] ICE Connection Failed");
+        setNetStatus("bad");
         attemptIceRestart();
       }
     };
 
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState;
-      console.log("STATE:", s);
-      if (s === "failed") attemptIceRestart();
-      if (s === "connected") {
-        // ✅ FORCE UI TRANSITION
+      console.log(`[WebRTC] Peer Connection State: ${s}`);
+      if (s === "connected" && status !== "active") {
+        console.log("[WebRTC] Connection state 'connected' — forcing 'active' status");
         setStatus("active");
         sock.emit("call:connected", { to: peerId });
-        console.log("CALL STATUS: active (STATE)");
         setWasConnected(true);
+      }
+      if (s === "failed") {
+        console.error("[WebRTC] Connection state failed — checking ICE");
+        attemptIceRestart();
       }
     };
 
+    pc.onsignalingstatechange = () => {
+      console.log(`[WebRTC] Signaling State: ${pc.signalingState}`);
+    };
+
     pc.onicegatheringstatechange = () => {
-      console.log("[WebRTC] ICE gathering state:", pc.iceGatheringState);
-      if (pc.iceGatheringState === "complete") {
-        console.log("[WebRTC] ICE gathering complete. All candidates collected.");
-      }
+      console.log(`[WebRTC] ICE Gathering State: ${pc.iceGatheringState}`);
     };
 
     return pc;
@@ -1422,10 +1424,17 @@ const CallPage = () => {
     const isNonConnectedState = status === "connecting" || netStatus === "reconnecting" || netStatus === "poor";
     
     if (isNonConnectedState) {
-      console.log(`[Watchdog] Started 30s timer for state: status=${status}, netStatus=${netStatus}`);
+      console.log(`[Watchdog] Monitoring connection: status=${status}, netStatus=${netStatus}`);
       watchdogTimer = setTimeout(() => {
-        console.error("[Watchdog] 30 seconds passed without connection. Ending call.");
-        setErrorMsg("Connection timeout");
+        // Final sanity check: if PeerConnection thinks we are connected, don't kill the call
+        if (pcRef.current && ["connected", "completed"].includes(pcRef.current.iceConnectionState)) {
+          console.log("[Watchdog] PC is actually connected, skipping timeout.");
+          setStatus("active");
+          return;
+        }
+
+        console.error("[Watchdog] 30 seconds passed without stable connection. Ending call.");
+        setErrorMsg("Connection timeout - Please try again.");
         cleanup(true);
       }, 30000);
     }
