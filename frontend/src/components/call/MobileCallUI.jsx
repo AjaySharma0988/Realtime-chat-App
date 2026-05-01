@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   Mic, MicOff, Video, VideoOff, PhoneOff, 
   MoreVertical, UserPlus, RotateCw, Wand2, 
@@ -76,6 +76,85 @@ const MobileCallUI = ({
   const [showMorePanel, setShowMorePanel] = useState(false);
   const [showAudioSheet, setShowAudioSheet] = useState(false);
   const [activeMenu, setActiveMenu] = useState(null); // 'main' | 'pip'
+  const containerRef = useRef(null);
+
+  // ── Draggable PiP State (Integrated from Laptop UI) ──
+  const pipW = isWatchParty ? 70 : 100;
+  const pipH = isWatchParty ? 100 : 150;
+  const [pipPos, setPipPos] = useState({ 
+    x: window.innerWidth - (isWatchParty ? 70 : 100) - 16, 
+    y: isWatchParty ? (uiVisible ? 52 : 12) : (uiVisible ? 60 : 20) 
+  });
+  const [isDragging, setIsDragging] = useState(false);
+  const [hasManuallyMoved, setHasManuallyMoved] = useState(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const dragStart = useRef({ x: 0, y: 0 });
+  const hasMoved = useRef(false);
+
+  // Sync position on mode change if not manually moved
+  useEffect(() => {
+    if (!hasManuallyMoved) {
+      const initialTop = isWatchParty ? (uiVisible ? 52 : 12) : (uiVisible ? 60 : 20);
+      setPipPos({ x: window.innerWidth - pipW - 16, y: initialTop });
+    }
+  }, [isWatchParty, uiVisible, pipW, hasManuallyMoved]);
+
+  const getConstrainedPos = (x, y) => {
+    const rect = containerRef.current?.getBoundingClientRect() || { width: window.innerWidth, height: window.innerHeight };
+    const margin = 12;
+    const minX = margin;
+    const maxX = rect.width - pipW - margin;
+    // Bounds depend on whether UI overlays are visible
+    const minY = uiVisible ? (isWatchParty ? 52 : 80) : margin;
+    const maxY = rect.height - (uiVisible ? (isWatchParty ? 80 : 140) : margin) - pipH;
+
+    return {
+      x: Math.max(minX, Math.min(x, maxX)),
+      y: Math.max(minY, Math.min(y, maxY))
+    };
+  };
+
+  const handleTouchStart = (e) => {
+    const touch = e.touches[0];
+    setIsDragging(true);
+    hasMoved.current = false;
+    dragStart.current = { x: touch.clientX, y: touch.clientY };
+    dragOffset.current = { x: touch.clientX, y: touch.clientY };
+    e.stopPropagation();
+  };
+
+  const handleTouchMove = (e) => {
+    if (!isDragging) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - dragOffset.current.x;
+    const dy = touch.clientY - dragOffset.current.y;
+
+    if (Math.abs(touch.clientX - dragStart.current.x) > 10 || Math.abs(touch.clientY - dragStart.current.y) > 10) {
+      hasMoved.current = true;
+      setHasManuallyMoved(true);
+    }
+
+    setPipPos(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+    dragOffset.current = { x: touch.clientX, y: touch.clientY };
+  };
+
+  const handleTouchEnd = (e) => {
+    if (!isDragging) return;
+    setIsDragging(false);
+
+    if (!hasMoved.current) {
+      // Tap detected -> Swap videos
+      setIsSwapped(!isSwapped);
+    } else {
+      // Snapping logic: Snap to left or right edge
+      const rect = containerRef.current?.getBoundingClientRect() || { width: window.innerWidth };
+      const centerX = rect.width / 2;
+      const snapX = (pipPos.x + pipW / 2) < centerX ? 12 : rect.width - pipW - 12;
+      const constrained = getConstrainedPos(snapX, pipPos.y);
+      setPipPos(constrained);
+    }
+  };
+
 
   // Refresh devices when opening the sheet (parity with laptop logic)
   useEffect(() => {
@@ -128,10 +207,15 @@ const MobileCallUI = ({
     topIconSize: isWatchParty ? 18 : 24,
     localPreview: {
       ...S.localPreview,
-      top: isWatchParty ? (uiVisible ? 52 : 12) : (uiVisible ? 60 : 20),
-      width: isWatchParty ? 70 : 100,
-      height: isWatchParty ? 100 : 150,
-      transition: "all 0.3s ease-in-out",
+      top: 0,
+      right: "auto",
+      left: 0,
+      width: pipW,
+      height: pipH,
+      transform: `translate3d(${pipPos.x}px, ${pipPos.y}px, 0)`,
+      transition: isDragging ? "none" : "all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+      touchAction: "none",
+      zIndex: 50, // Ensure it stays above other overlays
     }
   };
 
@@ -179,7 +263,7 @@ const MobileCallUI = ({
   }
 
   return (
-    <div style={S.container} onClick={toggleUI}>
+    <div ref={containerRef} style={S.container} onClick={toggleUI}>
       <style>{UI_ANIMATIONS}</style>
       {/* BACKGROUND VIDEO (Remote or Local if swapped/calling) */}
       <div style={S.videoBg}>
@@ -209,7 +293,39 @@ const MobileCallUI = ({
       {isActive && (
         <div 
           style={dS.localPreview} 
-          onClick={(e) => { e.stopPropagation(); setIsSwapped(!isSwapped); }}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          // Also support mouse for emulator testing
+          onMouseDown={(e) => {
+            setIsDragging(true);
+            hasMoved.current = false;
+            dragStart.current = { x: e.clientX, y: e.clientY };
+            dragOffset.current = { x: e.clientX, y: e.clientY };
+            e.stopPropagation();
+          }}
+          onMouseMove={(e) => {
+            if (!isDragging) return;
+            const dx = e.clientX - dragOffset.current.x;
+            const dy = e.clientY - dragOffset.current.y;
+            if (Math.abs(e.clientX - dragStart.current.x) > 5 || Math.abs(e.clientY - dragStart.current.y) > 5) {
+              hasMoved.current = true;
+              setHasManuallyMoved(true);
+            }
+            setPipPos(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+            dragOffset.current = { x: e.clientX, y: e.clientY };
+          }}
+          onMouseUp={() => {
+            if (!isDragging) return;
+            setIsDragging(false);
+            if (!hasMoved.current) setIsSwapped(!isSwapped);
+            else {
+              const rect = containerRef.current?.getBoundingClientRect() || { width: window.innerWidth };
+              const centerX = rect.width / 2;
+              const snapX = (pipPos.x + pipW / 2) < centerX ? 12 : rect.width - pipW - 12;
+              setPipPos(getConstrainedPos(snapX, pipPos.y));
+            }
+          }}
         >
           <video
             key={`pip-${isSwapped}`}
