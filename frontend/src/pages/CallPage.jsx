@@ -411,19 +411,33 @@ const CallPage = () => {
     setTimeout(resolve, 2000); // Max 2s wait for initial candidates
   });
 
-  // ── Attempt ICE restart ───────────────────────────────────────────────────
+  // ── Attempt ICE restart (WhatsApp-like Reconnection) ───────────────────────────
   const attemptIceRestart = useCallback(() => {
     if (!pcRef.current || cleanedUp.current) return;
+    
+    // Part 4: Reconnection Logic (Limit attempts + 30s timeout)
     if (iceRestartCountRef.current >= MAX_ICE_RESTARTS) {
       console.error("[ICE] Max restarts reached — ending call");
       setErrorMsg("Connection lost after multiple retries.");
-      cleanup(false);
+      cleanup(true); // Sync call end on both sides
       return;
     }
+    
     iceRestartCountRef.current += 1;
-    console.log(`[ICE] Restart attempt ${iceRestartCountRef.current}/${MAX_ICE_RESTARTS}`);
+    console.log(`[ICE] Reconnection attempt ${iceRestartCountRef.current}/${MAX_ICE_RESTARTS}`);
     setNetStatus("reconnecting");
-    try { pcRef.current.restartIce(); }
+    
+    try { 
+      pcRef.current.restartIce(); 
+      
+      // 30s timeout for this specific reconnection attempt
+      setTimeout(() => {
+        if (!cleanedUp.current && pcRef.current && !["connected", "completed"].includes(pcRef.current.iceConnectionState)) {
+          console.warn("[ICE] Reconnection timed out after 30s");
+          cleanup(true);
+        }
+      }, 30000);
+    }
     catch (e) { console.error("[ICE] restartIce failed:", e); }
   }, [cleanup]);
 
@@ -599,10 +613,9 @@ const CallPage = () => {
       echoCancellation: true,
       noiseSuppression: true,
       autoGainControl: true,
-
-      // Step 1: Optimized constraints for WhatsApp-level clarity
-      channelCount: 1,
       sampleRate: 48000,
+      channelCount: 1,
+      // WhatsApp-level clarity settings
       sampleSize: 16
     };
     let reqVideo = callType === "video" ? {
@@ -1103,8 +1116,16 @@ const CallPage = () => {
     };
     window.addEventListener("pagehide", handlePageHide);
 
+    // 🧩 PART 5 — NETWORK CHANGE HANDLING
+    const handleOnline = () => {
+      console.log("[Network] Back online — restarting ICE");
+      attemptIceRestart();
+    };
+    window.addEventListener("online", handleOnline);
+
     return () => {
       window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("online", handleOnline);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1133,125 +1154,44 @@ const CallPage = () => {
     return () => clearTimeout(closeTimer);
   }, [status, isCaller, wasConnected]);
 
-  const toggleMic = async () => {
+  const toggleMic = () => {
     if (!localStream.current) return;
-    const currentTrack = localStream.current.getAudioTracks()[0];
+    const audioTrack = localStream.current.getAudioTracks()[0];
     const willMute = !isMuted;
 
-    try {
-      if (willMute) {
-        // MUTING: Stop track to release hardware resource
-        if (currentTrack) {
-          currentTrack.enabled = false;
-          currentTrack.stop();
-        }
-        setIsMuted(true);
-      } else {
-        // UNMUTING: Re-acquire hardware resource
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const newTrack = stream.getAudioTracks()[0];
+    if (audioTrack) {
+      audioTrack.enabled = !willMute;
+    }
+    setIsMuted(willMute);
 
-        if (currentTrack) {
-          localStream.current.removeTrack(currentTrack);
-        }
-        localStream.current.addTrack(newTrack);
-
-        // Update PeerConnection if active
-        if (pcRef.current) {
-          const sender = pcRef.current.getSenders().find(s => s.track?.kind === "audio");
-          if (sender) {
-            await sender.replaceTrack(newTrack);
-          }
-        }
-        setIsMuted(false);
-      }
-
-      // Sync state to peer
-      if (sockRef.current?.connected) {
-        sockRef.current.emit("call:mediaStatus", {
-          callId: peerId,
-          isMuted: willMute,
-          isCameraOff
-        });
-      }
-    } catch (err) {
-      console.error("[Mic Resource] Toggle failed:", err);
+    // Sync state to peer
+    if (sockRef.current?.connected) {
+      sockRef.current.emit("call:mediaStatus", {
+        callId: peerId,
+        isMuted: willMute,
+        isCameraOff
+      });
     }
   };
 
-  const toggleCamera = async () => {
+  const toggleCamera = () => {
     if (!localStream.current) return;
-    const currentTrack = localStream.current.getVideoTracks()[0];
+    const videoTrack = localStream.current.getVideoTracks()[0];
     const willCameraOff = !isCameraOff;
 
-    try {
-      if (willCameraOff) {
-        // TURNING OFF: Stop hardware track to release camera resource (light off)
-        if (currentTrack) {
-          currentTrack.enabled = false;
-          currentTrack.stop();
-        }
-        setIsCameraOff(true);
+    if (videoTrack) {
+      videoTrack.enabled = !willCameraOff;
+    }
+    setIsCameraOff(willCameraOff);
+    if (!willCameraOff) setHasEverEnabledVideo(true);
 
-        if (sockRef.current?.connected) {
-          sockRef.current.emit("call:mediaStatus", {
-            callId: peerId,
-            isMuted,
-            isCameraOff: true
-          });
-        }
-      } else {
-        // TURNING ON: Re-acquire camera resource
-        const videoStream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            aspectRatio: 16 / 9,
-            facingMode: "user"
-          }
-        });
-        const newTrack = videoStream.getVideoTracks()[0];
-
-        if (currentTrack) {
-          localStream.current.removeTrack(currentTrack);
-        }
-        localStream.current.addTrack(newTrack);
-
-        // Update PeerConnection
-        if (pcRef.current) {
-          const sender = pcRef.current.getSenders().find(s => s.track?.kind === "video");
-          if (sender) {
-            // Smoothly swap track if sender exists
-            await sender.replaceTrack(newTrack);
-          } else {
-            // First time adding video (Audio -> Video upgrade)
-            pcRef.current.addTrack(newTrack, localStream.current);
-            const offer = await pcRef.current.createOffer();
-            await pcRef.current.setLocalDescription(offer);
-            if (sockRef.current?.connected) {
-              sockRef.current.emit("call:renegotiate", { callId: peerId, offer });
-            }
-          }
-        }
-
-        // Update local preview
-        if (localVidRef.current) {
-          localVidRef.current.srcObject = localStream.current;
-        }
-
-        setIsCameraOff(false);
-        setHasEverEnabledVideo(true);
-
-        if (sockRef.current?.connected) {
-          sockRef.current.emit("call:mediaStatus", {
-            callId: peerId,
-            isMuted,
-            isCameraOff: false
-          });
-        }
-      }
-    } catch (err) {
-      console.error("[Camera Resource] Toggle failed:", err);
+    // Sync state to peer
+    if (sockRef.current?.connected) {
+      sockRef.current.emit("call:mediaStatus", {
+        callId: peerId,
+        isMuted,
+        isCameraOff: willCameraOff
+      });
     }
   };
 

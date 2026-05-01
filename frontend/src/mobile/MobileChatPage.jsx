@@ -8,7 +8,7 @@ import {
   Image as ImageIcon, Camera, MapPin, User, FileText, BarChart2, Calendar,
   Sparkles, X, Trash2, Search,
   Info, BellOff, Timer, Heart, Bookmark, Flag, Ban, Eraser, CheckSquare,
-  ChevronDown, Reply, Forward, Copy, Star, Plus,
+  ChevronDown, Reply, Forward, Copy, Star, Plus, AlertTriangle,
 } from "lucide-react";
 import { MessageBubble } from "../components/MessageBubble";
 import MessageSkeleton from "../components/skeletons/MessageSkeleton";
@@ -393,6 +393,21 @@ const MobileChatPage = () => {
             <ChevronDown className="size-6" />
           </button>
         )}
+
+      {/* Deactivated account banner */}
+      {selectedUser?.deletionScheduledAt && (
+        <div className="mx-4 mb-2 p-4 rounded-2xl bg-error/5 border border-error/20 flex items-center gap-4 animate-in slide-in-from-bottom-2 duration-300 relative z-20">
+          <div className="size-10 rounded-xl bg-error/10 flex items-center justify-center text-error flex-shrink-0">
+            <AlertTriangle className="size-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-base-content">Account Deactivated</p>
+            <p className="text-xs text-base-content/50 leading-relaxed">
+              This account is currently deactivated. Your messages may not be received.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Input Section */}
       {(!isCameraOpen || cameraImage) && (
