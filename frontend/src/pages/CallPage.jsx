@@ -25,6 +25,7 @@ import WatchPartyContainer from "../components/call/WatchPartyContainer";
 import { THEMES } from "../constants";
 import { useThemeStore } from "../store/useThemeStore";
 import { ICE_SERVERS } from "../constants/webrtc";
+import MobileCallUI from "../components/call/MobileCallUI";
 
 const BASE_URL = import.meta.env.MODE === "development" ? "http://localhost:5001" : "/";
 
@@ -85,7 +86,15 @@ const CallPage = () => {
   const [selectedCamera, setSelectedCamera] = useState(localStorage.getItem("selectedCamera") || "default");
 
   // Real-time UI states
-  const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const isMobile = windowWidth < 500 || /Mobi|Android/i.test(navigator.userAgent);
+  
+  useEffect(() => {
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const [localDevice] = useState(isMobile ? "mobile" : "desktop");
   const [remoteDevice, setRemoteDevice] = useState("desktop");
 
@@ -93,6 +102,8 @@ const CallPage = () => {
   const [handState, setHandState] = useState({ localRaised: false, remoteRaised: false });
   const [emojis, setEmojis] = useState([]);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [uiVisible, setUiVisible] = useState(true);
+  const [showMorePanel, setShowMorePanel] = useState(false);
 
   const isConnectingUI = status === "calling" || status === "ringing" || status === "connecting";
 
@@ -110,6 +121,11 @@ const CallPage = () => {
   };
 
   const { width: pipW, height: pipH } = getPipDimensions();
+
+  const toggleUI = () => {
+    if (!isMobile) return;
+    setUiVisible(prev => !prev);
+  };
 
   // Draggable PiP state
   const [pipPos, setPipPos] = useState({ x: window.innerWidth - pipW - 20, y: 80 });
@@ -237,6 +253,43 @@ const CallPage = () => {
   const [selectedGroupUsers, setSelectedGroupUsers] = useState([]);
   const chatUsers = useChatStore(state => state.users);
   const initUsers = useChatStore(state => state.getUsers);
+
+  // ── Resizing State ─────────────────────────────
+  const [splitRatio, setSplitRatio] = useState(isMobile ? 65 : 75);
+  const [isResizing, setIsResizing] = useState(false);
+  const [showWpHeader, setShowWpHeader] = useState(true);
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleMove = (e) => {
+      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+      if (isMobile) {
+        const ratio = (clientY / window.innerHeight) * 100;
+        // Allow shrinking up to the top bar (approx 8-10% depending on screen height)
+        setSplitRatio(Math.max(8, Math.min(92, ratio)));
+      } else {
+        const ratio = (clientX / window.innerWidth) * 100;
+        setSplitRatio(Math.max(15, Math.min(90, ratio)));
+      }
+    };
+
+    const handleEnd = () => setIsResizing(false);
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleEnd);
+    window.addEventListener("touchmove", handleMove);
+    window.addEventListener("touchend", handleEnd);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleEnd);
+      window.removeEventListener("touchmove", handleMove);
+      window.removeEventListener("touchend", handleEnd);
+    };
+  }, [isResizing, isMobile]);
 
   useEffect(() => {
     if (showAddPeople && chatUsers.length === 0) initUsers();
@@ -1405,17 +1458,34 @@ const CallPage = () => {
     }
   }
 
-  // 🧩 PART 2: FIX CAMERA BINDING
+  // 🧩 PART 2: FIX CAMERA BINDING (Sync across Desktop/Mobile)
   useEffect(() => {
-    if (remoteCameraStream) {
-      if (remoteVidRef.current && remoteVidRef.current.srcObject !== remoteCameraStream) {
-        remoteVidRef.current.srcObject = remoteCameraStream;
+    const syncStreams = () => {
+      if (localStream.current && localVidRef.current) {
+        if (localVidRef.current.srcObject !== localStream.current) {
+          console.log("[MediaSync] Binding local stream to", isMobile ? "Mobile" : "Desktop");
+          localVidRef.current.srcObject = localStream.current;
+        }
       }
-      if (remoteAudRef.current && remoteAudRef.current.srcObject !== remoteCameraStream) {
-        remoteAudRef.current.srcObject = remoteCameraStream;
+      if (remoteCameraStream && remoteVidRef.current) {
+        if (remoteVidRef.current.srcObject !== remoteCameraStream) {
+          console.log("[MediaSync] Binding remote stream to", isMobile ? "Mobile" : "Desktop");
+          remoteVidRef.current.srcObject = remoteCameraStream;
+        }
       }
-    }
-  }, [remoteCameraStream]);
+      if (remoteCameraStream && remoteAudRef.current) {
+        if (remoteAudRef.current.srcObject !== remoteCameraStream) {
+          remoteAudRef.current.srcObject = remoteCameraStream;
+        }
+      }
+    };
+
+    syncStreams();
+    // Double-check after render to ensure refs are ready
+    const timer = setTimeout(syncStreams, 300);
+    const timer2 = setTimeout(syncStreams, 1000); // extra safety for slower mobiles
+    return () => { clearTimeout(timer); clearTimeout(timer2); };
+  }, [isMobile, status, remoteCameraStream, isCameraOff, peerCameraOff, windowWidth, isSwapped]);
 
   // ── 30-Second Connection Watchdog ──────────────────────────────────────────
   useEffect(() => {
@@ -1448,15 +1518,29 @@ const CallPage = () => {
 
   // ── Call ended screen ─────────────────────────────────────────────────────
   if (isEnded) {
+    if (isMobile) {
+      return (
+        <MobileCallUI
+          status={status}
+          peerName={peerName}
+          peerPic={peerPic}
+          onEndCall={() => window.close()}
+          onNavigateChat={() => { getBc()?.postMessage({ type: "NAVIGATE_CHAT" }); window.close(); }}
+          callAgain={() => {
+            getBc()?.postMessage({ type: "CALL_AGAIN", peerId, callType });
+            window.close();
+          }}
+        />
+      );
+    }
+
     const label =
       status === "rejected" ? "Call declined" :
         status === "timeout" ? "No answer" : "Call ended";
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center text-white select-none relative overflow-hidden" style={{ background: "linear-gradient(135deg, var(--fallback-b1,oklch(var(--b1))) 0%, var(--fallback-b2,oklch(var(--b2))) 100%)" }} data-theme={callTheme}>
-
         {/* Subtle background glow behind avatar */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] bg-[var(--fallback-p,oklch(var(--p)))]/10 rounded-full blur-[90px] pointer-events-none" />
-
         <div className="relative z-10 flex flex-col items-center" style={{ animation: "fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards" }}>
           <style>{`
             @keyframes fadeUp {
@@ -1464,19 +1548,16 @@ const CallPage = () => {
               100% { opacity: 1; transform: translateY(0) scale(1); }
             }
           `}</style>
-
           {/* Avatar with multiple concentric rings for premium feel */}
           <div className="relative mb-6">
             <div className="absolute inset-0 rounded-full border border-[var(--fallback-p,oklch(var(--p)))]/30 animate-pulse opacity-40" style={{ transform: "scale(1.15)" }} />
             <div className="absolute inset-0 rounded-full border border-[var(--fallback-p,oklch(var(--p)))]/20 animate-pulse opacity-30" style={{ transform: "scale(1.3)", animationDelay: "200ms" }} />
-
             <div className="p-2.5 rounded-full bg-[var(--fallback-b1,oklch(var(--b1)))]/80 backdrop-blur-md border border-white/5 shadow-[0_10px_40px_rgba(0,0,0,0.5)] relative z-10">
               <img src={peerPic} alt={peerName}
                 onError={(e) => { e.target.src = "/avatar.png"; }}
                 className="size-32 rounded-full object-cover border-2 border-white/10" />
             </div>
           </div>
-
           <div className="text-center space-y-3 mb-12">
             <h2 className="text-[28px] font-bold tracking-tight text-[var(--fallback-bc,oklch(var(--bc)))] drop-shadow-md">{peerName}</h2>
             <div className="inline-flex items-center justify-center bg-white/5 border border-white/10 backdrop-blur-md px-4 py-1.5 rounded-full shadow-sm">
@@ -1490,7 +1571,6 @@ const CallPage = () => {
               </div>
             )}
           </div>
-
           <div className="flex items-center gap-8">
             <button onClick={() => { getBc()?.postMessage({ type: "NAVIGATE_CHAT" }); window.close(); }}
               className="flex flex-col items-center gap-2 group transition-all hover:-translate-y-1">
@@ -1499,7 +1579,6 @@ const CallPage = () => {
               </div>
               <span className="text-[12px] font-medium text-[oklch(var(--bc) / 0.6)] group-hover:text-[var(--fallback-bc,oklch(var(--bc)))] transition-colors">Message</span>
             </button>
-
             <button onClick={() => {
               getBc()?.postMessage({ type: "CALL_AGAIN", peerId, callType });
               window.close();
@@ -1510,7 +1589,6 @@ const CallPage = () => {
               </div>
               <span className="text-[12px] font-semibold text-[var(--fallback-bc,oklch(var(--bc)))]">Call again</span>
             </button>
-
             <button onClick={() => window.close()}
               className="flex flex-col items-center gap-2 group transition-all hover:-translate-y-1">
               <div className="size-14 rounded-full bg-[#EF4444]/15 group-hover:bg-[#EF4444]/25 flex items-center justify-center border border-[#EF4444]/20 backdrop-blur-md shadow-lg transition-colors">
@@ -1524,20 +1602,36 @@ const CallPage = () => {
     );
   }
 
-  // ── Active call UI ────────────────────────────────────────────────────────
+  // ── Active call UI (Unified Layout handles both now) ──
+  // Note: Early return removed to allow for smooth Watch Party transitions on mobile.
+
   return (
     <>
 
-      <div className="fixed inset-0 bg-black flex overflow-hidden text-white select-none z-[99999] wa-call-window font-sans" data-theme={callTheme}>
+      <div className={`fixed inset-0 bg-black flex ${isMobile ? 'flex-col' : 'flex-row'} overflow-hidden text-white select-none z-[99999] wa-call-window font-sans`} data-theme={callTheme}>
 
         {/* ── CENTRAL SPLIT VIEW ── */}
-        {/* MEDIA SYSTEM (LEFT) */}
+        {/* MEDIA SYSTEM (LEFT/TOP) */}
         <div
-          className={`transition-all duration-500 ease-in-out overflow-hidden flex flex-col bg-[var(--fallback-b1,oklch(var(--b1)))] z-10 ${isWatchParty ? "opacity-100 border-r-[1px] border-white/5" : "opacity-0 border-none"}`}
-          style={{ width: isWatchParty ? "75%" : "0%", minWidth: isWatchParty ? "75%" : "0%" }}
+          className={`transition-all ${isResizing ? 'duration-0' : 'duration-500'} ease-in-out overflow-hidden flex flex-col bg-[var(--fallback-b1,oklch(var(--b1)))] z-10 ${isWatchParty ? "opacity-100 border-r-[1px] border-white/5" : "opacity-0 border-none"}`}
+          style={{ 
+            width: isMobile ? "100%" : (isWatchParty ? `${splitRatio}%` : "0%"), 
+            minWidth: isMobile ? "100%" : (isWatchParty ? `${splitRatio}%` : "0%"),
+            height: isMobile ? (isWatchParty ? `${splitRatio}%` : "0%") : "100%",
+            minHeight: isMobile ? (isWatchParty ? `${splitRatio}%` : "0%") : "100%"
+          }}
+          onClick={() => isMobile && setShowWpHeader(prev => !prev)}
         >
           {/* HEADER */}
-          <div className="h-16 shrink-0 border-b border-[var(--fallback-b3,oklch(var(--b3)))]/50 shadow-sm pointer-events-auto relative">
+          <div 
+            className={`transition-all duration-300 ease-in-out shrink-0 border-b border-[var(--fallback-b3,oklch(var(--b3)))]/50 shadow-sm pointer-events-auto relative z-[60] ${(isMobile && !showWpHeader) ? 'overflow-hidden' : ''}`}
+            style={{ 
+              height: (isMobile && !showWpHeader) ? 0 : 64,
+              opacity: (isMobile && !showWpHeader) ? 0 : 1,
+              transform: (isMobile && !showWpHeader) ? 'translateY(-10px)' : 'translateY(0)'
+            }}
+            onClick={(e) => e.stopPropagation()} // Prevent double-toggle when clicking header buttons
+          >
             <MediaPanel
               activeFeature={activeFeature}
               setActiveFeature={setActiveFeature}
@@ -1581,12 +1675,81 @@ const CallPage = () => {
             )}
           </div>
         </div>
-        {/* CALL SYSTEM (RIGHT 25% or 100%) */}
+
+        {/* ── RESIZABLE DIVIDER ── */}
+        {isWatchParty && (
+          <div
+            onMouseDown={() => setIsResizing(true)}
+            onTouchStart={() => setIsResizing(true)}
+            className={`z-[100] flex items-center justify-center transition-colors hover:bg-primary/30 group active:bg-primary/50 ${isMobile ? 'h-2 w-full cursor-row-resize' : 'w-2 h-full cursor-col-resize'}`}
+          >
+             <div className={`bg-white/20 rounded-full transition-all group-hover:bg-primary group-active:scale-x-150 ${isMobile ? 'w-16 h-1' : 'h-16 w-1'}`} />
+          </div>
+        )}
+
+        {/* CALL SYSTEM (RIGHT/BOTTOM) */}
         <div
-          className={`transition-all duration-500 ease-in-out relative flex flex-col bg-[var(--fallback-b2,oklch(var(--b2)))] ${isWatchParty ? "shadow-[-10px_0_30px_rgba(0,0,0,0.5)] z-20" : ""}`}
-          style={{ width: isWatchParty ? "25%" : "100%", minWidth: isWatchParty ? "25%" : "100%" }}
+          className={`transition-all ${isResizing ? 'duration-0' : 'duration-500'} ease-in-out relative flex flex-col bg-[var(--fallback-b2,oklch(var(--b2)))] ${isWatchParty ? (isMobile ? "shadow-[0_-10px_30px_rgba(0,0,0,0.5)]" : "shadow-[-10px_0_30px_rgba(0,0,0,0.5)]") : ""} z-20`}
+          style={{ 
+            width: isMobile ? "100%" : (isWatchParty ? `${100 - splitRatio}%` : "100%"), 
+            minWidth: isMobile ? "100%" : (isWatchParty ? `${100 - splitRatio}%` : "100%"),
+            height: isMobile ? (isWatchParty ? `${100 - splitRatio}%` : "100%") : "100%",
+            minHeight: isMobile ? (isWatchParty ? `${100 - splitRatio}%` : "100%") : "100%"
+          }}
         >
-          <div className={`absolute inset-0 flex flex-col overflow-hidden mx-[10px] ${isWatchParty ? "watch-party-active" : ""}`}>
+          <div className={`absolute inset-0 flex flex-col overflow-hidden ${!isMobile ? "mx-[10px]" : ""} ${isWatchParty ? "watch-party-active" : ""}`}>
+
+            {isMobile ? (
+              <MobileCallUI
+                status={status}
+                peerName={peerName}
+                peerPic={peerPic}
+                peerMuted={peerMuted}
+                peerCameraOff={peerCameraOff}
+                isMuted={isMuted}
+                isCameraOff={isCameraOff}
+                handState={handState}
+                duration={duration}
+                netStatus={netStatus}
+                uiVisible={uiVisible}
+                toggleUI={toggleUI}
+                onEndCall={() => cleanup(true)}
+                toggleMic={toggleMic}
+                toggleCamera={toggleCamera}
+                toggleHandRaise={toggleHandRaise}
+                handleEmojiSelect={handleEmojiSelect}
+                switchCamera={switchCamera}
+                videoInputDevices={videoInputDevices}
+                selectedCamera={selectedCamera}
+                onNavigateChat={() => getBc()?.postMessage({ type: "NAVIGATE_CHAT" })}
+                onToggleWatchParty={() => {
+                  const next = !isWatchParty;
+                  setIsWatchParty(next);
+                  sockRef.current?.emit("call:watchPartyToggle", { callId: peerId, enabled: next });
+                }}
+                selectedSpeaker={selectedSpeaker}
+                switchSpeaker={switchSpeaker}
+                audioOutputDevices={audioOutputDevices}
+                selectedMic={selectedMic}
+                switchMic={switchMic}
+                audioInputDevices={audioInputDevices}
+                localVidRef={localVidRef}
+                remoteVidRef={remoteVidRef}
+                remoteCameraStream={remoteCameraStream}
+                localStream={localStream}
+                isSwapped={isSwapped}
+                setIsSwapped={setIsSwapped}
+                emojis={emojis}
+                remoteAudRef={remoteAudRef}
+                refreshDevices={refreshDevices}
+                localFit={localFit}
+                setLocalFit={setLocalFit}
+                remoteFit={remoteFit}
+                setRemoteFit={setRemoteFit}
+                isWatchParty={isWatchParty}
+              />
+            ) : (
+              <>
 
             {/* ── TOP BAR ───────────────────────────────────────────────────────────── */}
             {isWatchParty ? (
@@ -2132,6 +2295,8 @@ const CallPage = () => {
                 />
               </div>
             )}
+          </>
+        )}
 
             {/* Simple Toast Component */}
             {toast.show && (
@@ -2194,6 +2359,12 @@ const MediaPanel = ({ activeFeature, setActiveFeature, showToast, playlist, setP
   }, []);
 
   const buttons = [
+    {
+      label: "Home",
+      value: "home",
+      icon: <MonitorPlay className="size-3.5" />,
+      class: "bg-blue-600 hover:bg-blue-700",
+    },
     {
       label: "Screenshare",
       value: "screenshare",
@@ -2338,7 +2509,7 @@ const MediaPanel = ({ activeFeature, setActiveFeature, showToast, playlist, setP
           </div>
         ) : (
           <div className="flex gap-2">
-            {buttons.map((b) => {
+            {buttons.filter(b => b.value !== 'home').map((b) => {
               if (b.value === 'playlist') {
                 return (
                   <div key={b.label} className="playlist-anchor">
