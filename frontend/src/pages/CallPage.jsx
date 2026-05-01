@@ -1578,7 +1578,7 @@ const CallPage = () => {
     const timer = setTimeout(syncStreams, 300);
     const timer2 = setTimeout(syncStreams, 1000); // extra safety for slower mobiles
     return () => { clearTimeout(timer); clearTimeout(timer2); };
-  }, [isMobile, status, remoteCameraStream, isCameraOff, peerCameraOff, windowWidth, isSwapped]);
+  }, [isMobile, status, remoteCameraStream, isCameraOff, peerCameraOff, windowWidth, isSwapped, isWatchParty]);
 
   // ── 30-Second Connection Watchdog ──────────────────────────────────────────
   useEffect(() => {

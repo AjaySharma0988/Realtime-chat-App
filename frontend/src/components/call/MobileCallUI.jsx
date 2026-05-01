@@ -96,6 +96,9 @@ const MobileCallUI = ({
     if (!hasManuallyMoved) {
       const initialTop = isWatchParty ? (uiVisible ? 52 : 12) : (uiVisible ? 60 : 20);
       setPipPos({ x: window.innerWidth - pipW - 16, y: initialTop });
+    } else {
+      // Even if manually moved, ensure it stays within bounds of the current mode (Watch Party has smaller container)
+      setPipPos(prev => getConstrainedPos(prev.x, prev.y));
     }
   }, [isWatchParty, uiVisible, pipW, hasManuallyMoved]);
 
@@ -141,6 +144,10 @@ const MobileCallUI = ({
   const handleTouchEnd = (e) => {
     if (!isDragging) return;
     setIsDragging(false);
+
+    // CRITICAL: Prevent ghost clicks that might hit buttons underneath (like End Call)
+    if (e.cancelable) e.preventDefault();
+    e.stopPropagation();
 
     if (!hasMoved.current) {
       // Tap detected -> Swap videos
@@ -314,10 +321,12 @@ const MobileCallUI = ({
             }
             setPipPos(prev => ({ x: prev.x + dx, y: prev.y + dy }));
             dragOffset.current = { x: e.clientX, y: e.clientY };
+            e.stopPropagation();
           }}
-          onMouseUp={() => {
+          onMouseUp={(e) => {
             if (!isDragging) return;
             setIsDragging(false);
+            e.stopPropagation();
             if (!hasMoved.current) setIsSwapped(!isSwapped);
             else {
               const rect = containerRef.current?.getBoundingClientRect() || { width: window.innerWidth };
