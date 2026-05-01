@@ -385,22 +385,27 @@ const STYLES = {
   // dropdown menu
   dropdownMenu: {
     position: "absolute",
-    bottom: "calc(100% + 12px)",
+    bottom: "calc(100% + 10px)",
     left: 0,
-    minWidth: 260, // Wider like the reference image
+    minWidth: 220, // Reduced width
+    maxWidth: 280, // Prevent it from getting too wide
+    maxHeight: 320, // Add scroll for many devices
     background: T.menuBg,
     border: `1px solid ${T.border}`,
     borderRadius: 12,
-    padding: "8px 0", // No side padding for full-width items
-    boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
+    padding: "6px 0",
+    boxShadow: "0 10px 40px rgba(0,0,0,0.6)",
     zIndex: 9999,
-    overflow: "hidden",
+    overflowX: "hidden",
+    overflowY: "auto", // Enable scrolling
+    scrollbarWidth: "thin",
+    scrollbarColor: "rgba(255,255,255,0.1) transparent",
   },
   dropdownLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 500,
     color: T.textMuted,
-    padding: "6px 20px 8px", // Matches image spacing
+    padding: "4px 16px 6px",
     cursor: "default",
   },
   dropdownItem: {
@@ -411,11 +416,11 @@ const STYLES = {
     background: "transparent",
     border: "none",
     color: T.textMain,
-    fontSize: 14,
-    padding: "8px 20px", // More horizontal space
+    fontSize: 13, // Smaller font
+    padding: "6px 16px", // Tighter padding
     cursor: "pointer",
     transition: "background 0.1s",
-    gap: 12,
+    gap: 10,
   },
 
   // emoji popup
