@@ -76,6 +76,14 @@ const CallPage = () => {
   const [menuOpen, setMenuOpen] = useState(null);
   const { callTheme, setCallTheme } = useThemeStore();
 
+  // ── Audio Device Selection State ──────────────────────────────────────────
+  const [audioInputDevices, setAudioInputDevices] = useState([]);
+  const [audioOutputDevices, setAudioOutputDevices] = useState([]);
+  const [videoInputDevices, setVideoInputDevices] = useState([]);
+  const [selectedMic, setSelectedMic] = useState(localStorage.getItem("selectedMic") || "default");
+  const [selectedSpeaker, setSelectedSpeaker] = useState(localStorage.getItem("selectedSpeaker") || "default");
+  const [selectedCamera, setSelectedCamera] = useState(localStorage.getItem("selectedCamera") || "default");
+
   // Real-time UI states
   const isMobile = /Mobi|Android/i.test(navigator.userAgent);
   const [localDevice] = useState(isMobile ? "mobile" : "desktop");
@@ -441,6 +449,143 @@ const CallPage = () => {
     catch (e) { console.error("[ICE] restartIce failed:", e); }
   }, [cleanup]);
 
+  // ── Audio Device Management (Microphones & Speakers) ────────────────────────
+  const refreshDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      setAudioInputDevices(devices.filter(d => d.kind === "audioinput"));
+      setAudioOutputDevices(devices.filter(d => d.kind === "audiooutput"));
+      setVideoInputDevices(devices.filter(d => d.kind === "videoinput"));
+    } catch (err) {
+      console.warn("[MediaDevices] Failed to enumerate devices:", err);
+    }
+  }, []);
+
+  const switchCamera = useCallback(async (deviceId) => {
+    if (!localStream.current) return;
+    try {
+      console.log(`[MediaDevices] Switching camera to: ${deviceId}`);
+      
+      const constraints = {
+        video: { 
+          deviceId: { exact: deviceId },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          aspectRatio: 16 / 9
+        }
+      };
+      
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+      const newTrack = newStream.getVideoTracks()[0];
+      
+      const oldTrack = localStream.current.getVideoTracks()[0];
+      if (oldTrack) {
+        localStream.current.removeTrack(oldTrack);
+        oldTrack.stop();
+      }
+      localStream.current.addTrack(newTrack);
+      
+      if (pcRef.current) {
+        const sender = pcRef.current.getSenders().find(s => s.track?.kind === "video");
+        if (sender) {
+          await sender.replaceTrack(newTrack);
+        }
+      }
+      
+      newTrack.enabled = !isCameraOff;
+      
+      if (localVidRef.current) {
+        localVidRef.current.srcObject = localStream.current;
+      }
+      
+      setSelectedCamera(deviceId);
+      localStorage.setItem("selectedCamera", deviceId);
+      setHasEverEnabledVideo(true);
+    } catch (err) {
+      console.error("[MediaDevices] Failed to switch camera:", err);
+    }
+  }, [isCameraOff]);
+
+  const switchMic = useCallback(async (deviceId) => {
+    if (!localStream.current) return;
+    try {
+      console.log(`[MediaDevices] Switching mic to: ${deviceId}`);
+      
+      // Part 3: Seamless mic switch without call drop
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        audio: { deviceId: { exact: deviceId } }
+      });
+      const newTrack = newStream.getAudioTracks()[0];
+      
+      // Replace the track in the local stream reference
+      const oldTrack = localStream.current.getAudioTracks()[0];
+      if (oldTrack) {
+        localStream.current.removeTrack(oldTrack);
+        oldTrack.stop();
+      }
+      localStream.current.addTrack(newTrack);
+      
+      // Part 3: Replace track in PeerConnection sender
+      if (pcRef.current) {
+        const sender = pcRef.current.getSenders().find(s => s.track?.kind === "audio");
+        if (sender) {
+          await sender.replaceTrack(newTrack);
+        }
+      }
+      
+      // Sync local muted state to the new track
+      newTrack.enabled = !isMuted;
+      
+      setSelectedMic(deviceId);
+      localStorage.setItem("selectedMic", deviceId);
+    } catch (err) {
+      console.error("[MediaDevices] Failed to switch microphone:", err);
+    }
+  }, [isMuted]);
+
+  const switchSpeaker = useCallback(async (deviceId) => {
+    try {
+      console.log(`[MediaDevices] Switching speaker to: ${deviceId}`);
+      
+      // Part 4: Switch speaker (setSinkId)
+      if (remoteAudRef.current && typeof remoteAudRef.current.setSinkId === "function") {
+        await remoteAudRef.current.setSinkId(deviceId);
+      }
+      if (remoteVidRef.current && typeof remoteVidRef.current.setSinkId === "function") {
+        await remoteVidRef.current.setSinkId(deviceId);
+      }
+      
+      setSelectedSpeaker(deviceId);
+      localStorage.setItem("selectedSpeaker", deviceId);
+    } catch (err) {
+      console.error("[MediaDevices] Failed to switch speaker:", err);
+    }
+  }, []);
+
+  // Listen for device changes (Bluetooth, plug/unplug)
+  useEffect(() => {
+    navigator.mediaDevices.ondevicechange = refreshDevices;
+    refreshDevices();
+    return () => { navigator.mediaDevices.ondevicechange = null; };
+  }, [refreshDevices]);
+
+  // Apply saved speaker preference once remote audio/video elements are ready
+  useEffect(() => {
+    if (selectedSpeaker && selectedSpeaker !== "default") {
+      const applyInitialSpeaker = async () => {
+        try {
+          if (remoteAudRef.current && typeof remoteAudRef.current.setSinkId === "function") {
+            await remoteAudRef.current.setSinkId(selectedSpeaker);
+          }
+          if (remoteVidRef.current && typeof remoteVidRef.current.setSinkId === "function") {
+            await remoteVidRef.current.setSinkId(selectedSpeaker);
+          }
+        } catch (e) { console.warn("[MediaDevices] Failed to apply initial speaker:", e); }
+      };
+      applyInitialSpeaker();
+    }
+  }, [selectedSpeaker, remoteCameraStream]);
+
   // ── Build RTCPeerConnection ───────────────────────────────────────────────
   const buildPC = useCallback((sock) => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -615,14 +760,17 @@ const CallPage = () => {
       autoGainControl: true,
       sampleRate: 48000,
       channelCount: 1,
-      // WhatsApp-level clarity settings
+      // Step 8: Use stored user preference if available
+      deviceId: selectedMic ? { ideal: selectedMic } : undefined,
       sampleSize: 16
     };
     let reqVideo = callType === "video" ? {
       width: { ideal: 1280 },
       height: { ideal: 720 },
       aspectRatio: 16 / 9,
-      facingMode: "user"
+      facingMode: "user",
+      // Use stored camera preference if available
+      deviceId: selectedCamera ? { ideal: selectedCamera } : undefined,
     } : false;
 
     try {
@@ -1948,6 +2096,17 @@ const CallPage = () => {
                   handState={handState}
                   showEmojiPicker={showEmojiPicker}
                   isWatchParty={isWatchParty}
+                  // Device Management Props
+                  audioInputDevices={audioInputDevices}
+                  audioOutputDevices={audioOutputDevices}
+                  videoInputDevices={videoInputDevices}
+                  selectedMic={selectedMic}
+                  selectedSpeaker={selectedSpeaker}
+                  selectedCamera={selectedCamera}
+                  switchMic={switchMic}
+                  switchSpeaker={switchSpeaker}
+                  switchCamera={switchCamera}
+                  // handlers
                   toggleMic={toggleMic}
                   toggleCamera={toggleCamera}
                   toggleHandRaise={toggleHandRaise}

@@ -25,11 +25,11 @@ const T = {
   bg:          "var(--fallback-b1,oklch(var(--b1)))",
   surface:     "var(--fallback-b3,oklch(var(--b3)))",
   surfaceHov:  "#38505D",
-  menuBg:      "#233138",
-  border:      "rgba(255,255,255,0.08)",
-  textMain:    "var(--fallback-bc,oklch(var(--bc)))",
-  textMuted:   "oklch(var(--bc) / 0.6)",
-  activeGreen: "var(--fallback-p,oklch(var(--p)))",
+  menuBg:      "#2a3942", // Darker WhatsApp-style surface
+  border:      "rgba(255,255,255,0.06)",
+  textMain:    "#e9edef", // Soft white
+  textMuted:   "#8696a0", // Grey from reference image
+  activeGreen: "#00a884", // WhatsApp green
   endRed:      "#EF4444",
   endRedHov:   "#DC2626",
 };
@@ -42,7 +42,14 @@ function usePillMenu() {
 }
 
 // ── Camera pill ──────────────────────────────────────────────────────────────
-function CameraControl({ isCameraOff, toggleCamera }) {
+// ── Camera pill (with Device Selection) ──────────────────────────────────────
+function CameraControl({ 
+  isCameraOff, 
+  toggleCamera, 
+  videoInputDevices, 
+  selectedCamera, 
+  switchCamera 
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -72,22 +79,33 @@ function CameraControl({ isCameraOff, toggleCamera }) {
       {menuOpen && (
         <div style={STYLES.dropdownMenu}>
           <div style={STYLES.dropdownLabel}>Camera</div>
-          <button
-            onClick={() => { toggleCamera(); setMenuOpen(false); }}
-            style={STYLES.dropdownItem}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-          >
-            {isCameraOff ? "Turn on camera" : "Turn off camera"}
-          </button>
-          <button
-            onClick={() => setMenuOpen(false)}
-            style={STYLES.dropdownItem}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-          >
-            Switch camera
-          </button>
+          
+          {videoInputDevices.length > 0 ? (
+            videoInputDevices.map((d) => (
+              <button
+                key={d.deviceId}
+                onClick={() => { switchCamera(d.deviceId); setMenuOpen(false); }}
+                style={{
+                  ...STYLES.dropdownItem,
+                  color: (selectedCamera === d.deviceId || (selectedCamera === "default" && d.deviceId === "default")) ? T.activeGreen : T.textMain,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+              >
+                <div style={{ width: 14, display: "flex", justifyContent: "center" }}>
+                  {(selectedCamera === d.deviceId || (selectedCamera === "default" && d.deviceId === "default")) && "✓"}
+                </div>
+                <span style={{ flex: 1, textAlign: "left" }}>{d.label || `Camera ${d.deviceId.slice(0, 5)}`}</span>
+              </button>
+            ))
+          ) : (
+            <div style={{ ...STYLES.dropdownItem, color: T.textMuted, fontSize: 12 }}>No cameras found</div>
+          )}
+          
+          <div style={{ height: 4 }} />
         </div>
       )}
     </div>
@@ -95,7 +113,17 @@ function CameraControl({ isCameraOff, toggleCamera }) {
 }
 
 // ── Mic pill ─────────────────────────────────────────────────────────────────
-function MicControl({ isMuted, toggleMic }) {
+// ── Mic pill (with Device Selection) ──────────────────────────────────────────
+function MicControl({ 
+  isMuted, 
+  toggleMic, 
+  audioInputDevices, 
+  audioOutputDevices, 
+  selectedMic, 
+  selectedSpeaker, 
+  switchMic, 
+  switchSpeaker 
+}) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
@@ -121,23 +149,54 @@ function MicControl({ isMuted, toggleMic }) {
 
       {menuOpen && (
         <div style={STYLES.dropdownMenu}>
+          {/* MICROPHONES SECTION */}
           <div style={STYLES.dropdownLabel}>Microphone</div>
-          <button
-            onClick={() => { toggleMic(); setMenuOpen(false); }}
-            style={STYLES.dropdownItem}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-          >
-            {isMuted ? "Unmute" : "Mute"}
-          </button>
-          <button
-            onClick={() => setMenuOpen(false)}
-            style={STYLES.dropdownItem}
-            onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
-            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-          >
-            Select microphone
-          </button>
+          {audioInputDevices.length > 0 ? (
+            audioInputDevices.map((d) => (
+              <button
+                key={d.deviceId}
+                onClick={() => { switchMic(d.deviceId); setMenuOpen(false); }}
+                style={STYLES.dropdownItem}
+                onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+              >
+                <div style={{ width: 16, display: "flex", justifyContent: "center", fontSize: 14 }}>
+                  {(selectedMic === d.deviceId || (selectedMic === "default" && d.deviceId === "default")) ? "✓" : ""}
+                </div>
+                <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {d.label || `Microphone ${d.deviceId.slice(0, 5)}`}
+                </span>
+              </button>
+            ))
+          ) : (
+            <div style={{ ...STYLES.dropdownItem, color: T.textMuted, fontSize: 13 }}>No microphones found</div>
+          )}
+
+          {/* SPEAKERS SECTION */}
+          {audioOutputDevices.length > 0 && (
+            <>
+              <div style={{ height: 8 }} />
+              <div style={STYLES.dropdownLabel}>Speakers</div>
+              {audioOutputDevices.map((d) => (
+                <button
+                  key={d.deviceId}
+                  onClick={() => { switchSpeaker(d.deviceId); setMenuOpen(false); }}
+                  style={STYLES.dropdownItem}
+                  onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+                >
+                  <div style={{ width: 16, display: "flex", justifyContent: "center", fontSize: 14 }}>
+                    {(selectedSpeaker === d.deviceId || (selectedSpeaker === "default" && d.deviceId === "default")) ? "✓" : ""}
+                  </div>
+                  <span style={{ flex: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {d.label || `Speaker ${d.deviceId.slice(0, 5)}`}
+                  </span>
+                </button>
+              ))}
+            </>
+          )}
+
+          <div style={{ height: 4 }} />
         </div>
       )}
     </div>
@@ -188,6 +247,16 @@ const DefaultCallControls = ({
   handState,
   showEmojiPicker,
   isWatchParty,
+  // Device Management Props
+  audioInputDevices = [],
+  audioOutputDevices = [],
+  videoInputDevices = [],
+  selectedMic = "default",
+  selectedSpeaker = "default",
+  selectedCamera = "default",
+  switchMic,
+  switchSpeaker,
+  switchCamera,
   // handlers
   toggleMic,
   toggleCamera,
@@ -204,8 +273,23 @@ const DefaultCallControls = ({
 
       {/* ── LEFT: camera + mic ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <CameraControl isCameraOff={isCameraOff} toggleCamera={toggleCamera} />
-        <MicControl    isMuted={isMuted}          toggleMic={toggleMic}   />
+        <CameraControl 
+          isCameraOff={isCameraOff} 
+          toggleCamera={toggleCamera} 
+          videoInputDevices={videoInputDevices}
+          selectedCamera={selectedCamera}
+          switchCamera={switchCamera}
+        />
+        <MicControl 
+          isMuted={isMuted} 
+          toggleMic={toggleMic} 
+          audioInputDevices={audioInputDevices}
+          audioOutputDevices={audioOutputDevices}
+          selectedMic={selectedMic}
+          selectedSpeaker={selectedSpeaker}
+          switchMic={switchMic}
+          switchSpeaker={switchSpeaker}
+        />
       </div>
 
       {/* ── CENTRE: feature icons ── */}
@@ -301,36 +385,37 @@ const STYLES = {
   // dropdown menu
   dropdownMenu: {
     position: "absolute",
-    bottom: "calc(100% + 10px)",
+    bottom: "calc(100% + 12px)",
     left: 0,
-    minWidth: 170,
+    minWidth: 260, // Wider like the reference image
     background: T.menuBg,
     border: `1px solid ${T.border}`,
-    borderRadius: 10,
-    padding: 6,
-    boxShadow: "0 8px 30px rgba(0,0,0,0.55)",
+    borderRadius: 12,
+    padding: "8px 0", // No side padding for full-width items
+    boxShadow: "0 12px 40px rgba(0,0,0,0.6)",
     zIndex: 9999,
+    overflow: "hidden",
   },
   dropdownLabel: {
-    fontSize: 11,
-    fontWeight: 600,
+    fontSize: 12,
+    fontWeight: 500,
     color: T.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: "0.06em",
-    padding: "4px 10px 6px",
+    padding: "6px 20px 8px", // Matches image spacing
+    cursor: "default",
   },
   dropdownItem: {
-    display: "block",
+    display: "flex",
+    alignItems: "center",
     width: "100%",
     textAlign: "left",
     background: "transparent",
     border: "none",
     color: T.textMain,
-    fontSize: 13.5,
-    padding: "9px 12px",
-    borderRadius: 7,
+    fontSize: 14,
+    padding: "8px 20px", // More horizontal space
     cursor: "pointer",
-    transition: "background 0.15s",
+    transition: "background 0.1s",
+    gap: 12,
   },
 
   // emoji popup
