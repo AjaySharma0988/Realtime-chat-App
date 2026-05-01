@@ -1153,6 +1153,8 @@ const CallPage = () => {
     sock.on("screen:start", () => {
       console.log("REMOTE SCREEN START SIGNAL RECEIVED");
       setIsRemoteScreenSharing(true);
+      setIsWatchParty(true);
+      setActiveFeature("screenshare");
     });
 
     sock.on("screen:stop", () => {
@@ -1532,6 +1534,54 @@ const CallPage = () => {
     }
   }
 
+  // 🧩 MOBILE SCREEN SHARE PATHWAY (Media Projection / Screen Recording)
+  async function startMobileScreenShare() {
+    try {
+      console.log("[ScreenShare] Initializing mobile pathway...");
+      
+      // Separate pathway for mobile: 
+      // 1. Audio is explicitly disabled to prevent failure on many mobile browsers (iOS/Android)
+      // 2. Optimized resolution and framerate for mobile stability
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 15 }
+        },
+        audio: false 
+      });
+
+      setScreenStream(stream);
+      setIsScreenSharing(true);
+      setActiveFeature("screenshare");
+      setIsWatchParty(true);
+
+      const screenPC = new RTCPeerConnection(ICE_SERVERS);
+      screenPCRef.current = screenPC;
+
+      stream.getTracks().forEach(track => {
+        screenPC.addTrack(track, stream);
+      });
+
+      screenPC.onicecandidate = (e) => {
+        if (e.candidate) {
+          sockRef.current.emit("screen:ice", { to: peerId, candidate: e.candidate });
+        }
+      };
+
+      const offer = await screenPC.createOffer();
+      await screenPC.setLocalDescription(offer);
+      sockRef.current.emit("screen:offer", { to: peerId, offer });
+
+      stream.getVideoTracks()[0].onended = stopScreenShare;
+      sockRef.current.emit("screen:start", { callId: peerId });
+      
+      console.log("[ScreenShare] Mobile pathway active");
+    } catch (err) {
+      console.error("Mobile Screen share error:", err);
+    }
+  }
+
   // 🧩 PART 6: STOP SCREEN SHARE
   function stopScreenShare() {
     if (screenStream) {
@@ -1762,8 +1812,9 @@ const CallPage = () => {
                 remoteScreenStream={remoteScreenStream}
                 isScreenSharing={isScreenSharing}
                 isRemoteScreenSharing={isRemoteScreenSharing}
-                startScreenShare={startScreenShare}
+                startScreenShare={isMobile ? startMobileScreenShare : startScreenShare}
                 stopScreenShare={stopScreenShare}
+                isMobile={isMobile}
               />
             )}
           </div>
@@ -1820,6 +1871,9 @@ const CallPage = () => {
                   setIsWatchParty(next);
                   sockRef.current?.emit("call:watchPartyToggle", { callId: peerId, enabled: next });
                 }}
+                onStartScreenShare={startMobileScreenShare}
+                onStopScreenShare={stopScreenShare}
+                isScreenSharing={isScreenSharing}
                 selectedSpeaker={selectedSpeaker}
                 switchSpeaker={switchSpeaker}
                 audioOutputDevices={audioOutputDevices}

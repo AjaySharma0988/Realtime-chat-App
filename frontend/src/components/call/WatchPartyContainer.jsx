@@ -24,7 +24,7 @@ const WatchPartyContainer = ({
   // PASSED SCREEN PROPS
   screenStream, remoteScreenStream, isScreenSharing, isRemoteScreenSharing,
   startScreenShare, stopScreenShare,
-  userId, setIsWatchParty
+  userId, setIsWatchParty, isMobile
 }) => {
   const [mediaData, setMediaData] = useState(null);
   const [wpState, setWpState] = useState("idle"); // idle | confirming | playing
@@ -357,13 +357,13 @@ const WatchPartyContainer = ({
 
   if (activeFeature === "screenshare") {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center bg-[var(--fallback-b2,oklch(var(--b2)))] p-12 fade-in media-container relative group">
+      <div className={`w-full h-full flex flex-col items-center justify-center bg-[var(--fallback-b2,oklch(var(--b2)))] ${isMobile ? 'p-0' : 'p-12'} fade-in media-container relative group`}>
         {(isScreenSharing || isRemoteScreenSharing) ? (
           <div className="w-full h-full flex flex-col items-center justify-center gap-6">
             <video
               ref={el => el && (isScreenSharing ? (screenStream && (el.srcObject = screenStream)) : (remoteScreenStream && (el.srcObject = remoteScreenStream)))}
               autoPlay playsInline muted={isScreenSharing}
-              className="w-full h-full object-contain bg-black rounded-xl shadow-2xl border border-white/10"
+              className={`w-full h-full object-contain bg-black ${isMobile ? 'rounded-none' : 'rounded-xl shadow-2xl border border-white/10'}`}
             />
             {isScreenSharing && (
               <button onClick={stopScreenShare} className="absolute top-6 right-6 px-4 py-2 rounded-lg bg-red-500/80 hover:bg-red-500 text-white text-xs font-bold shadow-lg transition-all z-50 backdrop-blur-md">

@@ -72,6 +72,9 @@ const MobileCallUI = ({
   remoteFit,
   setRemoteFit,
   isWatchParty,
+  onStartScreenShare,
+  onStopScreenShare,
+  isScreenSharing,
 }) => {
   const [showMorePanel, setShowMorePanel] = useState(false);
   const [showAudioSheet, setShowAudioSheet] = useState(false);
@@ -352,6 +355,15 @@ const MobileCallUI = ({
               <button style={S.sheetActionItem} onClick={() => { onToggleWatchParty(); setShowMorePanel(false); }}>
                 <div style={S.sheetActionLabel}>Watch party</div>
                 <MonitorPlay size={20} />
+              </button>
+
+              <button style={S.sheetActionItem} onClick={() => { 
+                if (isScreenSharing) onStopScreenShare();
+                else onStartScreenShare();
+                setShowMorePanel(false); 
+              }}>
+                <div style={S.sheetActionLabel}>{isScreenSharing ? "Stop sharing" : "Share screen"}</div>
+                <MonitorPlay size={20} color={isScreenSharing ? T.red : "white"} />
               </button>
 
               <button style={S.sheetActionItem} onClick={() => { onNavigateChat(); setShowMorePanel(false); }}>
