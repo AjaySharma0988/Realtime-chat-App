@@ -1,7 +1,7 @@
 # Application Safe Point
 **Status**: 100% Operational
 **Date**: 2026-05-01
-**Time**: 13:11 (IST)
+**Time**: 20:06 (IST)
 
 ## Milestone Achievements
 - [x] Production-grade WebRTC Calling System (1-on-1 & Group)
@@ -10,5 +10,7 @@
 - [x] Real-time Network Resilience (ICE Restarts & Watchdogs)
 - [x] Deployment Optimized (Render Blueprint included)
 - [x] Mobile UI & Notification Fixes
+- [x] Mobile Draggable PiP & Snap Support
 
 This commit serves as a verified stable point for the entire application.
+
