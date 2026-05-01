@@ -1357,16 +1357,60 @@ const CallPage = () => {
     return () => clearTimeout(closeTimer);
   }, [status, isCaller, wasConnected]);
 
-  const toggleMic = () => {
+  const toggleMic = async () => {
     if (!localStream.current) return;
-    const audioTrack = localStream.current.getAudioTracks()[0];
     const willMute = !isMuted;
-
-    if (audioTrack) {
-      audioTrack.enabled = !willMute;
+    
+    // ── Resource Release/Allocation ──
+    if (willMute) {
+      // 1. STOP & RELEASE
+      const audioTrack = localStream.current.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.stop();
+        localStream.current.removeTrack(audioTrack);
+      }
+      // 2. CLEAR SENDERS (Main PC)
+      if (pcRef.current) {
+        const sender = pcRef.current.getSenders().find(s => s.track?.kind === "audio");
+        if (sender) await sender.replaceTrack(null);
+      }
+      // 3. CLEAR SENDERS (Group Mesh)
+      Object.values(groupPcsRef.current).forEach(async (pc) => {
+        const sender = pc.getSenders().find(s => s.track?.kind === "audio");
+        if (sender) await sender.replaceTrack(null);
+      });
+    } else {
+      // 1. RE-ALLOCATE (Acquire new track)
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { 
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            deviceId: selectedMic ? { ideal: selectedMic } : undefined 
+          }
+        });
+        const newTrack = stream.getAudioTracks()[0];
+        if (newTrack) {
+          localStream.current.addTrack(newTrack);
+          // 2. ATTACH TO PC (Main)
+          if (pcRef.current) {
+            const sender = pcRef.current.getSenders().find(s => s.track?.kind === "audio");
+            if (sender) await sender.replaceTrack(newTrack);
+          }
+          // 3. ATTACH TO PC (Group Mesh)
+          Object.values(groupPcsRef.current).forEach(async (pc) => {
+            const sender = pc.getSenders().find(s => s.track?.kind === "audio");
+            if (sender) await sender.replaceTrack(newTrack);
+          });
+        }
+      } catch (err) {
+        console.error("[Hardware] Failed to re-allocate microphone:", err);
+      }
     }
-    setIsMuted(willMute);
 
+    setIsMuted(willMute);
+    
     // Sync state to peer
     if (sockRef.current?.connected) {
       sockRef.current.emit("call:mediaStatus", {
@@ -1377,17 +1421,66 @@ const CallPage = () => {
     }
   };
 
-  const toggleCamera = () => {
+  const toggleCamera = async () => {
     if (!localStream.current) return;
-    const videoTrack = localStream.current.getVideoTracks()[0];
     const willCameraOff = !isCameraOff;
-
-    if (videoTrack) {
-      videoTrack.enabled = !willCameraOff;
+    
+    // ── Resource Release/Allocation ──
+    if (willCameraOff) {
+      // 1. STOP & RELEASE
+      const videoTrack = localStream.current.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.stop();
+        localStream.current.removeTrack(videoTrack);
+      }
+      // 2. CLEAR SENDERS (Main PC)
+      if (pcRef.current) {
+        const sender = pcRef.current.getSenders().find(s => s.track?.kind === "video");
+        if (sender) await sender.replaceTrack(null);
+      }
+      // 3. CLEAR SENDERS (Group Mesh)
+      Object.values(groupPcsRef.current).forEach(async (pc) => {
+        const sender = pc.getSenders().find(s => s.track?.kind === "video");
+        if (sender) await sender.replaceTrack(null);
+      });
+    } else {
+      // 1. RE-ALLOCATE (Acquire new track)
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: selectedCamera ? { ideal: selectedCamera } : undefined,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            aspectRatio: 16 / 9
+          }
+        });
+        const newTrack = stream.getVideoTracks()[0];
+        if (newTrack) {
+          localStream.current.addTrack(newTrack);
+          // 2. ATTACH TO PC (Main)
+          if (pcRef.current) {
+            const sender = pcRef.current.getSenders().find(s => s.track?.kind === "video");
+            if (sender) await sender.replaceTrack(newTrack);
+          }
+          // 3. ATTACH TO PC (Group Mesh)
+          Object.values(groupPcsRef.current).forEach(async (pc) => {
+            const sender = pc.getSenders().find(s => s.track?.kind === "video");
+            if (sender) await sender.replaceTrack(newTrack);
+          });
+          
+          // 4. Update Local View
+          if (localVidRef.current) {
+            localVidRef.current.srcObject = localStream.current;
+          }
+        }
+      } catch (err) {
+        console.error("[Hardware] Failed to re-allocate camera:", err);
+      }
     }
+
     setIsCameraOff(willCameraOff);
     if (!willCameraOff) setHasEverEnabledVideo(true);
-
+    
     // Sync state to peer
     if (sockRef.current?.connected) {
       sockRef.current.emit("call:mediaStatus", {
