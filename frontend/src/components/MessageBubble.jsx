@@ -1,10 +1,12 @@
 import { Check, CheckCheck, Mic, Video, Phone, Clock, RotateCw, Ban, Smile, Reply } from "lucide-react";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { formatMessageTime, getProfilePicUrl } from "../lib/utils";
 import EmojiReactionPanel from "./EmojiReactionPanel";
 import MessageReactions from "./MessageReactions";
 import { useChatStore } from "../store/useChatStore";
 import { useStatusStore } from "../store/useStatusStore";
+import { parseMessage } from "../lib/messageParser";
+import toast from "react-hot-toast";
 
 // ── Search highlight ─────────────────────────────────────────────────────────
 const HighlightText = ({ text, query }) => {
@@ -142,6 +144,42 @@ export const MessageBubble = ({
   };
 
   const isLargeEmoji = !message.image && !message.audio && message.type !== "call" && isOnlyEmoji(message.text);
+  const isSmallMessage = !message.image && !message.audio && message.type !== "call" && !isLargeEmoji && (message.text?.length < 60) && !message.text?.includes('\n');
+
+  const bubbleRef = useRef(null);
+
+  // Handle copy buttons in code blocks
+  useEffect(() => {
+    if (!bubbleRef.current) return;
+    const btns = bubbleRef.current.querySelectorAll('.copy-btn');
+    const handlers = [];
+
+    btns.forEach(btn => {
+      const handler = (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        const pre = bubbleRef.current.querySelector(`#${id}`);
+        if (!pre) return;
+
+        navigator.clipboard.writeText(pre.innerText).then(() => {
+          const originalText = btn.innerText;
+          btn.innerText = 'COPIED';
+          btn.classList.add('copied');
+          toast.success("Code copied to clipboard", { id: "copy-toast" });
+          setTimeout(() => {
+            btn.innerText = originalText;
+            btn.classList.remove('copied');
+          }, 2000);
+        });
+      };
+      btn.addEventListener('click', handler);
+      handlers.push({ btn, handler });
+    });
+
+    return () => {
+      handlers.forEach(({ btn, handler }) => btn.removeEventListener('click', handler));
+    };
+  }, [message.text, isEditing]);
 
   return (
     <div
@@ -231,7 +269,8 @@ export const MessageBubble = ({
 
       {/* ── BUBBLE CONTAINER ──────────────────────────── */}
       <div
-        className={`relative flex flex-col max-w-[65%] transition-all ${
+        ref={bubbleRef}
+        className={`relative flex flex-col max-w-[70%] transition-all ${
           isLargeEmoji ? "bg-transparent shadow-none" : "shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]"
         } ${isCurrentMatch ? "ring-2 ring-primary ring-offset-1" : isMatch ? "ring-1 ring-primary/40" : ""}`}
         style={{
@@ -243,8 +282,9 @@ export const MessageBubble = ({
           borderTopLeftRadius: isSent ? "12px" : "2px",
           borderBottomRightRadius: "12px",
           borderBottomLeftRadius: "12px",
-          padding: isLargeEmoji ? "0" : "4px 8px",
-          touchAction: "pan-y"
+          padding: isLargeEmoji ? "0" : "6px 9px 5px",
+          touchAction: "pan-y",
+          minWidth: !isLargeEmoji ? "65px" : "auto"
         }}
       >
         {/* Swipe Reply Indicator */}
@@ -352,44 +392,66 @@ export const MessageBubble = ({
           </div>
         ) : (
           message.text && (
-            <div className="text-[14.2px] pt-[2px] leading-relaxed break-words whitespace-pre-wrap pr-12 pb-3">
-              <HighlightText text={message.text} query={searchQuery} />
-              {message.isEdited && (
-                <span className="text-[10px] opacity-50 ml-1 italic">(edited)</span>
+            <div className={`pt-[1px] leading-relaxed break-words ${isSmallMessage ? "flex flex-wrap items-end justify-between gap-x-4 gap-y-1 pb-1" : "pb-3"}`}>
+              <div 
+                className="bubble-body"
+                style={{ display: 'inline', minWidth: 0 }}
+                dangerouslySetInnerHTML={{ __html: parseMessage(message.text, searchQuery) }} 
+              />
+              
+              {isSmallMessage && (
+                <div className="flex items-center gap-[3px] text-[10px] ml-auto mb-[-1px] whitespace-nowrap opacity-70 select-none">
+                  {message.isEdited && <span className="text-[9px] mr-1 opacity-50 italic">(edited)</span>}
+                  <span>{formatMessageTime(message.createdAt)}</span>
+                  {isSent && (
+                    <div className="flex-shrink-0">
+                      {message.status === "seen" ? (
+                        <CheckCheck className="size-[13px] text-info" />
+                      ) : message.status === "delivered" ? (
+                        <CheckCheck className="size-[13px]" />
+                      ) : (
+                        <Check className="size-[13px]" />
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )
         )}
 
-        <div
-          className={`${isLargeEmoji ? "relative mt-[-12px] pb-1" : "absolute bottom-1 right-2"} flex items-center justify-end gap-[3px] text-[11px]`}
-          style={{ color: "var(--bubble-meta-color, #8696A0)" }}
-        >
-          <span>{formatMessageTime(message.createdAt)}</span>
-          {isSent && (
-            <div 
-              className={`flex-shrink-0 pb-[1px] ${message.status === "failed" ? "cursor-pointer pointer-events-auto" : ""}`}
-              onClick={(e) => {
-                if (message.status === "failed") {
-                  e.stopPropagation();
-                  onRetryMessage?.(message);
-                }
-              }}
-            >
-              {message.status === "failed" ? (
-                <RotateCw className="size-[12px] text-error hover:rotate-180 transition-transform" />
-              ) : message.status === "pending" ? (
-                <Clock className="size-[12px] opacity-60" />
-              ) : message.status === "seen" ? (
-                <CheckCheck className="size-[14px] text-info" />
-              ) : message.status === "delivered" ? (
-                <CheckCheck className="size-[14px] opacity-60" />
-              ) : (
-                <Check className="size-[14px] opacity-60" />
-              )}
-            </div>
-          )}
-        </div>
+        {/* Absolute Metadata for Large Messages (Traditional Design) */}
+        {!isSmallMessage && (
+          <div
+            className={`${isLargeEmoji ? "relative mt-[-12px] pb-1" : "absolute bottom-1 right-2"} flex items-center justify-end gap-[3px] text-[11px]`}
+            style={{ color: "var(--bubble-meta-color, #8696A0)" }}
+          >
+            <span>{formatMessageTime(message.createdAt)}</span>
+            {isSent && (
+              <div 
+                className={`flex-shrink-0 pb-[1px] ${message.status === "failed" ? "cursor-pointer pointer-events-auto" : ""}`}
+                onClick={(e) => {
+                  if (message.status === "failed") {
+                    e.stopPropagation();
+                    onRetryMessage?.(message);
+                  }
+                }}
+              >
+                {message.status === "failed" ? (
+                  <RotateCw className="size-[12px] text-error hover:rotate-180 transition-transform" />
+                ) : message.status === "pending" ? (
+                  <Clock className="size-[12px] opacity-60" />
+                ) : message.status === "seen" ? (
+                  <CheckCheck className="size-[14px] text-info" />
+                ) : message.status === "delivered" ? (
+                  <CheckCheck className="size-[14px] opacity-60" />
+                ) : (
+                  <Check className="size-[14px] opacity-60" />
+                )}
+              </div>
+            )}
+          </div>
+        )}
         
         {/* REACTION PICKER TRIGGER (Visible on hover) */}
         {!message.isDeletedForEveryone && (

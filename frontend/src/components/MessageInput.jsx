@@ -4,6 +4,7 @@ import { useAuthStore } from "../store/useAuthStore";
 import { Image, Send, X, Paperclip, FileText, Mic, Trash2, CornerUpLeft, Smile, Camera, Headphones, User, BarChart2, Calendar, Sticker } from "lucide-react";
 import toast from "react-hot-toast";
 import EmojiPicker from "./EmojiPicker";
+import { isRichHtml, normalizeHtmlToMarkdown } from "../lib/messageParser";
 
 const getSupportedMimeType = () => {
   const types = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
@@ -64,6 +65,16 @@ const MessageInput = ({
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(injectedImage || null);
   const inputRef = useRef(null);
+
+  // Auto-resize textarea height
+  useEffect(() => {
+    const input = inputRef.current;
+    if (input) {
+      input.style.height = "auto";
+      input.style.height = `${input.scrollHeight}px`;
+    }
+  }, [text]);
+
 
   useEffect(() => {
     if (replyToMsg) {
@@ -146,6 +157,7 @@ const MessageInput = ({
     
     // Sync-clear UI state instantly to categorically eliminate duplicate submits
     setText("");
+    // Height will be reset by useEffect
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
     onCancelReply?.();
@@ -234,6 +246,25 @@ const MessageInput = ({
     setText((prev) => prev + emoji);
   };
 
+  const [showPasteToast, setShowPasteToast] = useState(false);
+
+  const handlePaste = (e) => {
+    const html = e.clipboardData.getData("text/html");
+    const plain = e.clipboardData.getData("text/plain");
+
+    if (isRichHtml(html)) {
+      e.preventDefault();
+      const normalized = normalizeHtmlToMarkdown(html);
+      
+      // Update text state
+      setText(normalized);
+      
+      // Show toast
+      setShowPasteToast(true);
+      setTimeout(() => setShowPasteToast(false), 2400);
+    }
+  };
+
   if (isRecording) {
     return (
       <div className="px-4 pb-4 pt-3 bg-base-200 flex-shrink-0">
@@ -273,7 +304,7 @@ const MessageInput = ({
       )}
 
       <form onSubmit={handleSendMessage} className="flex items-center gap-2">
-        <div className={`flex-1 ${isTransparent ? 'bg-black/30 backdrop-blur-md' : 'bg-[#202C33]'} rounded-full flex items-center px-3 py-1.5 min-h-[52px] relative border border-white/5`}>
+        <div className={`flex-1 ${isTransparent ? 'bg-black/30 backdrop-blur-md' : 'bg-base-200'} rounded-[26px] flex items-end px-3 py-1.5 min-h-[52px] relative border border-white/5`}>
           {/* ATTACHMENT POPUP */}
           {showAttachMenu && (
             <div className="absolute bottom-full mb-4 left-0 bg-[#233138] rounded-2xl shadow-2xl overflow-hidden w-64 z-50 border border-white/10 animate-in slide-in-from-bottom-4">
@@ -332,7 +363,7 @@ const MessageInput = ({
                 setShowAttachMenu((v) => !v);
                 setShowEmojiPicker(false);
               }} 
-              className={`p-2 transition-all active:scale-90 ${showAttachMenu ? "text-primary rotate-45" : "text-zinc-400 hover:text-zinc-200"}`}
+              className={`p-2 mb-0.5 transition-all active:scale-90 ${showAttachMenu ? "text-primary rotate-45" : "text-zinc-400 hover:text-zinc-200"}`}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="size-6">
                 <path d="M12 5v14M5 12h14" />
@@ -343,7 +374,7 @@ const MessageInput = ({
           {/* EMOJI BUTTON */}
           <button 
             type="button" 
-            className={`p-2 transition-colors ${showEmojiPicker ? "text-primary" : "text-zinc-400 hover:text-zinc-200"}`}
+            className={`p-2 mb-0.5 transition-colors ${showEmojiPicker ? "text-primary" : "text-zinc-400 hover:text-zinc-200"}`}
             onClick={() => {
               setShowEmojiPicker(!showEmojiPicker);
               setShowAttachMenu(false);
@@ -353,24 +384,31 @@ const MessageInput = ({
           </button>
 
           {/* TEXT INPUT */}
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
-            className="flex-1 py-2 bg-transparent text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none px-2"
+            className="flex-1 py-3 bg-transparent text-[15px] text-zinc-100 placeholder:text-zinc-500 outline-none px-2 resize-none max-h-[120px] overflow-y-auto leading-tight"
             placeholder="Type a message"
+            rows="1"
             value={text}
             onChange={(e) => setText(e.target.value)}
             onFocus={() => setShowAttachMenu(false)}
+            onPaste={handlePaste}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage(e);
+              }
+            }}
           />
 
           {/* MIC / SEND (Inside the bar) */}
-          <div className="flex items-center pr-1">
+          <div className="flex items-end pr-1 pb-1">
             {text.trim() || imagePreview ? (
               <button 
                 type="submit" 
-                className="size-9 rounded-full bg-[#00a884] flex items-center justify-center hover:opacity-90 transition-all active:scale-90"
+                className="size-9 rounded-full bg-primary flex items-center justify-center hover:opacity-90 transition-all active:scale-90"
               >
-                <Send className="size-4 text-black fill-black" style={{ transform: "rotate(-10deg)" }} />
+                <Send className="size-4 text-primary-content fill-current" style={{ transform: "rotate(-10deg)" }} />
               </button>
             ) : (
               <button 
@@ -386,6 +424,9 @@ const MessageInput = ({
 
         <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageChange} />
       </form>
+      <div id="paste-toast" className={showPasteToast ? "show" : ""}>
+        ✦ Rich content auto-formatted
+      </div>
     </div>
   );
 };

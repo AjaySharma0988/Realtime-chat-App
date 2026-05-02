@@ -45,6 +45,16 @@ const MobileChatPage = () => {
   const longPressTimer = useRef(null);
   const inputRef = useRef(null);
 
+  // Auto-resize textarea height
+  useEffect(() => {
+    const input = inputRef.current;
+    if (input) {
+      input.style.height = "auto";
+      input.style.height = `${input.scrollHeight}px`;
+    }
+  }, [text]);
+
+
   // Close menu on outside click
   useEffect(() => {
     const handler = (e) => {
@@ -411,7 +421,7 @@ const MobileChatPage = () => {
 
       {/* Input Section */}
       {(!isCameraOpen || cameraImage) && (
-        <div className={`p-2 flex flex-col relative z-20 transition-colors ${isCameraOpen && cameraImage ? 'bg-[#0B141A]' : 'bg-transparent'}`}>
+        <div className={`px-2 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex flex-col relative z-20 transition-colors ${isCameraOpen && cameraImage ? 'bg-[#0B141A]' : 'bg-transparent'}`}>
           {/* Integrated Reply Preview */}
           {replyToMsg && (
             <div className="mx-2 mb-2 bg-white/5 rounded-xl overflow-hidden animate-in slide-in-from-bottom-2 duration-200">
@@ -446,11 +456,11 @@ const MobileChatPage = () => {
           </div>
         )}
 
-        <form onSubmit={handleSendMessage} className="flex items-end gap-2">
-          <div className="flex-1 bg-base-300 rounded-[24px] flex items-center px-2 py-1 min-h-[48px] border border-base-content/10 relative">
+        <form onSubmit={handleSendMessage} className="flex items-end gap-1.5 min-[380px]:gap-2">
+          <div className="flex-1 bg-base-300 rounded-[24px] flex items-end px-1.5 min-[380px]:px-2 py-1 min-h-[48px] border border-base-content/10 relative">
             <button 
               type="button" 
-              className={`p-2 transition-colors ${showEmoji ? "text-primary" : "text-base-content/50"}`}
+              className={`p-1.5 min-[380px]:p-2 mb-0.5 transition-colors ${showEmoji ? "text-primary" : "text-base-content/50"}`}
               onClick={() => {
                 setShowEmoji(!showEmoji);
                 setShowAttachment(false);
@@ -463,32 +473,35 @@ const MobileChatPage = () => {
               onClose={() => setShowEmoji(false)} 
               onSelect={(emoji) => setText(prev => prev + emoji)} 
             />
-            <input 
+            <textarea
               ref={inputRef}
               placeholder="Message"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              className="flex-1 bg-transparent border-none focus:ring-0 text-base-content py-2 px-1 text-[16px] outline-none"
+              rows="1"
+              className="flex-1 bg-transparent border-none focus:ring-0 text-base-content py-2.5 px-1 text-[16px] outline-none resize-none max-h-[120px] overflow-y-auto leading-tight"
             />
-            <button type="button" onClick={() => setShowAttachment(!showAttachment)} className="p-2 text-base-content/50 transition-transform active:scale-90">
+            <button type="button" onClick={() => setShowAttachment(!showAttachment)} className="p-1.5 min-[380px]:p-2 mb-0.5 text-base-content/50 transition-transform active:scale-90">
               <Paperclip className={`size-6 ${showAttachment ? "text-primary rotate-45" : ""}`} />
             </button>
             {!text.trim() && !imagePreview && !cameraImage && (
-              <button type="button" onClick={() => setIsCameraOpen(true)} className="p-2 text-base-content/50">
+              <button type="button" onClick={() => setIsCameraOpen(true)} className="p-1.5 min-[380px]:p-2 mb-0.5 text-base-content/50">
                 <Camera className="size-6" />
               </button>
             )}
           </div>
-          <button 
-            type="submit" 
-            className={`size-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg transition-all active:scale-90 ${text.trim() || imagePreview || cameraImage ? 'bg-primary' : 'bg-[#00a884]'}`}
-          >
-            {text.trim() || imagePreview || cameraImage ? (
-              <Send className="size-6 text-white" />
-            ) : (
-              <Mic className="size-6 text-white" />
-            )}
-          </button>
+          <div className="pb-0.5">
+            <button 
+              type="submit" 
+              className={`size-11 rounded-full flex items-center justify-center flex-shrink-0 shadow-lg transition-all active:scale-90 ${text.trim() || imagePreview || cameraImage ? 'bg-primary' : 'bg-[#00a884]'}`}
+            >
+              {text.trim() || imagePreview || cameraImage ? (
+                <Send className="size-5 text-white" />
+              ) : (
+                <Mic className="size-5 text-white" />
+              )}
+            </button>
+          </div>
         </form>
       </div>
       )}
